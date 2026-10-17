@@ -1,0 +1,1 @@
+{"description":"Flock provider benchmark runner — liveness + quality + p50 latency, Roost-backed","main":"./bench.ts","name":"@flock/bench","scripts":{"bench":"bun ./bench.ts","test":"bun test ./bench.test.ts"},"type":"module","version":"0.1.0"}

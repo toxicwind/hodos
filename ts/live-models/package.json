@@ -1,0 +1,1 @@
+{"description":"Flock live model discovery scheduler — event-driven Roost discovery","main":"./live-models.ts","name":"@flock/live-models","scripts":{"test":"bun test ./live-models.test.ts"},"type":"module","version":"0.1.0"}

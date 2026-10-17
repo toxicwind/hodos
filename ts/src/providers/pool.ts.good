@@ -1,0 +1,331 @@
+/**
+ * Key pool: one "lane" per NIM API key, each with an exact sliding-window
+ * rate limiter (N requests per rolling 60s). NIM enforces ~40 RPM per key,
+ * so a sliding window matches its semantics better than a token bucket
+ * (which would allow a double-sized burst inside a single minute).
+ *
+ * Ported from proxy/src/pool.rs with fidelity to:
+ * - The pool is immutable once built; settings changes build a replacement via
+ *   [`Pool::rebuild`] and swap it into the shared [`PoolHandle`].
+ * - Disabled keys stay in the pool as inactive *state carriers* (never
+ *   granted, invisible to `len`/capacity/stats — they sit past the `active`
+ *   boundary). Without them, a disable→enable cycle spans two rebuilds and
+ *   the second would resurrect the key with a fresh window while the
+ *   upstream's window still remembers it — load-tested to cause real
+ *   upstream 429s before this existed.
+ * - The 61s window includes a 1s delivery-jitter safety margin.
+ * - Reservations record the send timestamp immediately to prevent oversubscription.
+ * - Sticky affinity: a conversation is pinned to one lane while it has capacity.
+ */
+import type { ProviderDef } from "./catalog";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** NIM's rolling window is 60s; the extra second is a delivery-jitter safety margin. */
+export const WINDOW_MS = 61_000;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A lane blueprint. Disabled specs become state carriers: held for their
+ *  rate state, never granted. */
+export type LaneSpec = {
+  key: string;
+  rpm: number;
+  enabled: boolean;
+};
+
+/** One lane's live state. */
+export type LaneStat = {
+  key: string;
+  rpm: number;
+  inWindow: number;
+  cooldownMs: number;
+};
+
+/** Reservation result from [`Pool::reserve`]. */
+export type Reservation =
+  | { ok: true; lane: number; key: string; stamp: number; sticky: boolean }
+  | { ok: false; waitMs: number };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Internal state
+// ─────────────────────────────────────────────────────────────────────────────
+
+type LaneData = {
+  key: string;
+  rpm: number;
+  /** Timestamps of requests sent within the last WINDOW_MS. */
+  sent: number[];
+  /** Lane is in cooldown until this instant (set after an upstream 429/5xx). */
+  cooldownUntil: number;
+};
+
+/** Shared, swappable pool: readers snapshot an `Arc<Pool>`; the settings
+ *  layer swaps in a rebuilt pool under the write lock. */
+export type PoolHandle = {
+  /** Get a read-only snapshot of the current pool. */
+  readonly: () => Pool;
+  /** Build a replacement pool and swap it in. */
+  rebuild: (newSpecs: LaneSpec[]) => void;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pool class
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The key pool. */
+export class Pool {
+  private lanes: LaneData[];
+  private active: number; // enabled lanes first, then carriers
+
+  private constructor(lanes: LaneData[], active: number) {
+    this.lanes = lanes;
+    this.active = active;
+  }
+
+  /** Build a pool from lane specs. */
+  static new(specs: LaneSpec[]): Pool {
+    return Pool.assemble(specs, undefined);
+  }
+
+  /** Build a replacement pool from `specs`, carrying over the in-window
+   *  timestamps and cooldown of every key kept from `self`. */
+  rebuild(specs: LaneSpec[]): Pool {
+    return Pool.assemble(specs, this);
+  }
+
+  private static assemble(specs: LaneSpec[], old: Pool | undefined): Pool {
+    // Enabled lanes first (stable — preserves relative order), carriers after
+    const sorted = [...specs].sort((a, b) => (a.enabled ? 0 : 1) - (b.enabled ? 0 : 1));
+    const now = Date.now();
+    const lanes = sorted.map((spec) => {
+      const maybeOld = old?.lanes.find((lane) => lane.key === spec.key);
+      if (maybeOld) {
+        // Carry over sent timestamps (filtered to window) and cooldown
+        const sent = maybeOld.sent.filter((t) => now - t < WINDOW_MS);
+        return { key: spec.key, rpm: spec.rpm, sent, cooldownUntil: maybeOld.cooldownUntil, enabled: spec.enabled, enabled: spec.enabled };
+          key: spec.key,
+          rpm: spec.rpm,
+          sent,
+          cooldownUntil: maybeOld.cooldownUntil,
+        };
+      } else {
+        // Fresh lane
+        return { key: spec.key, rpm: spec.rpm, sent: [], cooldownUntil: now, enabled: spec.enabled, enabled: spec.enabled };
+          key: spec.key,
+          rpm: spec.rpm,
+          sent: [],
+          cooldownUntil: now,
+        };
+      }
+    });
+
+    const active = lanes.filter((lane) => lane.enabled).length;
+    return new Pool(lanes, active);
+  }
+
+  /** Enabled lanes only — carriers are invisible everywhere. */
+  len(): number {
+    return this.active;
+  }
+
+  /** Aggregate requests-per-minute across enabled lanes. */
+  capacityRpm(): number {
+    return this.lanes.slice(0, this.active).reduce((sum, lane) => sum + lane.rpm, 0);
+  }
+
+  /** Per-lane rpm budgets, in lane order (feeds the dashboard config). */
+  rpms(): number[] {
+    return this.lanes.slice(0, this.active).map((lane) => lane.rpm);
+  }
+
+  /** Point-in-time per-lane view for the Settings key rows. */
+  laneStats(): LaneStat[] {
+    const now = Date.now();
+    return this.lanes
+      .slice(0, this.active)
+      .map((lane) => {
+        // Count timestamps within the window
+        const inWindow = lane.sent.filter((t) => now - t < WINDOW_MS).length;
+        const cooldownMs =
+          lane.cooldownUntil > now ? lane.cooldownUntil - now : 0;
+        return {
+          key: lane.key,
+          rpm: lane.rpm,
+          inWindow,
+          cooldownMs,
+        };
+      });
+  }
+
+  /** Try to take a slot on lane `i` right now. Reserving records the send
+   *  timestamp immediately, so concurrent callers can't oversubscribe a lane. */
+  private tryTake(i: number, now: number, sticky: boolean): Reservation | null {
+    const lane = this.lanes[i];
+    if (lane.cooldownUntil > now) {
+      return null;
+    }
+
+    // Remove timestamps outside the window
+    while (
+      lane.sent.length > 0 &&
+      now - lane.sent[0] >= WINDOW_MS
+    ) {
+      lane.sent.shift();
+    }
+
+    if (lane.sent.length < lane.rpm) {
+      lane.sent.push(now);
+      return {
+        ok: true,
+        lane: i,
+        key: lane.key,
+        stamp: now,
+        sticky,
+      };
+    } else {
+      return null;
+    }
+  }
+
+  /** Try to reserve a request slot. `prefer` pins a conversation to one
+   *  lane while it has capacity; otherwise the least-loaded ready lane wins. */
+  reserve(prefer: number | null): Reservation {
+    const now = Date.now();
+    let laneToTry: number | null = prefer;
+
+    // Validate prefer index against current active lanes
+    if (
+      laneToTry !== null &&
+      (laneToTry < 0 || laneToTry >= this.active)
+    ) {
+      laneToTry = null;
+    }
+
+    // Try preferred lane first (for sticky affinity)
+    if (laneToTry !== null) {
+      const res = this.tryTake(laneToTry, now, true);
+      if (res) return res;
+    }
+
+    // Find least-loaded ready lane
+    const ready: Array<[number, number]> = []; // [inWindow, laneIndex]
+    let bestWaitMs = WINDOW_MS;
+
+    for (let i = 0; i < this.active; i++) {
+      const lane = this.lanes[i];
+
+      // Skip if in cooldown
+      if (lane.cooldownUntil > now) {
+        const waitMs = lane.cooldownUntil - now;
+        bestWaitMs = Math.min(bestWaitMs, waitMs);
+        continue;
+      }
+
+      // Remove expired timestamps
+      while (
+        lane.sent.length > 0 &&
+        now - lane.sent[0] >= WINDOW_MS
+      ) {
+        lane.sent.shift();
+      }
+
+      const inWindow = lane.sent.length;
+      if (inWindow < lane.rpm) {
+        ready.push([inWindow, i]);
+      } else {
+        // Lane is at capacity; calculate when next slot frees up
+        const oldestInWindow = lane.sent[lane.sent.length - lane.rpm];
+        const readyAt = oldestInWindow + WINDOW_MS;
+        const waitMs = readyAt - now;
+        bestWaitMs = Math.min(bestWaitMs, waitMs);
+      }
+    }
+
+    // Try ready lanes in order of least loaded
+    ready.sort((a, b) => a[0] - b[0]);
+    for (const [, i] of ready) {
+      const res = this.tryTake(i, now, false);
+      if (res) return res;
+    }
+
+    // All lanes busy
+    return { ok: false, waitMs: bestWaitMs };
+  }
+
+  /** Return a reserved slot that was never spent on an upstream request. */
+  release(lane: number, stamp: number): void {
+    const sent = this.lanes[lane].sent;
+    const pos = sent.lastIndexOf(stamp);
+    if (pos >= 0) {
+      sent.splice(pos, 1);
+    }
+  }
+
+  /** Put a lane in cooldown after the upstream told us to back off. */
+  penalize(lane: number, backoffMs: number): void {
+    const until = Date.now() + backoffMs;
+    if (this.lanes[lane].cooldownUntil < until) {
+      this.lanes[lane].cooldownUntil = until;
+    }
+  }
+
+  // ── Persistence hooks ----------------------------------------------------
+
+  /** (key, sorted unix-millis send stamps) for every lane holding state. */
+  laneWindowRows(nowUnix: number): Array<[string, number[]]> {
+    const now = Date.now();
+    return this.lanes
+      .map((lane) => {
+        const valid = lane.sent.filter((t) => now - t < WINDOW_MS);
+        const ms = valid.map((t) => now - t);
+        ms.sort((a, b) => a - b);
+        return [lane.key, ms];
+      })
+      .filter(([, ms]) => ms.length > 0);
+  }
+
+  /** (key, cooldown-until unix millis) for lanes currently cooling down. */
+  cooldownRows(nowUnix: number): Array<[string, number]> {
+    const now = Date.now();
+    return this.lanes
+      .filter((lane) => lane.cooldownUntil > now)
+      .map((lane) => [
+        lane.key,
+        lane.cooldownUntil - now,
+      ]);
+  }
+
+  /** Restore one lane's window from persisted unix-millis stamps. */
+  restoreLaneWindow(key: string, sentMs: number[], nowUnix: number): void {
+    const now = Date.now();
+    const lane = this.lanes.find((l) => l.key === key);
+    if (!lane) return;
+    for (const ms of sentMs) {
+      const ageMs = now - ms;
+      if (ageMs < WINDOW_MS) {
+        lane.sent.push(now - ageMs);
+      }
+    }
+  }
+
+  /** Restore a cooldown. */
+  restoreCooldown(key: string, untilMs: number, nowUnix: number): void {
+    const now = Date.now();
+    if (untilMs <= now) return;
+    const lane = this.lanes.find((l) => l.key === key);
+    if (!lane) return;
+    if (lane.cooldownUntil < now + untilMs) {
+      lane.cooldownUntil = now + untilMs;
+    }
+  }
+
+  /** The key behind a lane index, for cooldown persistence. */
+  laneKey(lane: number): string | null {
+    return this.lanes[lane]?.key ?? null;
+  }
+}
