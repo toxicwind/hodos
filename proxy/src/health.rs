@@ -6,10 +6,10 @@
 //!   0.7/0.3), and `stickies` in memory, claimed SQLite persistence, but the
 //!   shipped code never hydrated its maps from SQLite on startup and never
 //!   enforced sticky expiry. Here everything is write-behind persisted to
-//!   `$DATA_DIR/flock_state.db` and restored on boot, with expiry enforced.
+//!   `$DATA_DIR/hodos_state.db` and restored on boot, with expiry enforced.
 //! - AstMatrix's `metrics.go` (referenced by `router.go`) does not exist in the
 //!   shipped tree. Metrics here are real: health/circuit/ELO/sticky state is
-//!   exposed through `observation.rs`'s existing `flock_*` series.
+//!   exposed through `observation.rs`'s existing `hodos_*` series.
 //!
 //! The writer owns its `rusqlite::Connection` on a single background thread;
 //! the hot path never blocks on disk. Boot restore is synchronous and runs
@@ -31,13 +31,13 @@ use crate::{circuit::CircuitSnapshot, governor::GovernorSnapshot};
 
 /// AstMatrix's env/config override for the legacy database location.
 pub fn astmatrix_db_default() -> PathBuf {
-	std::env::var("FLOCK_ASTMATRIX_DB")
+	std::env::var("HODOS_ASTMATRIX_DB")
 		.map(PathBuf::from)
 		.unwrap_or_else(|_| PathBuf::from("/home/toxic/estate/data/ast_matrix.db"))
 }
 
 pub fn state_db_path(data_dir: &Path) -> PathBuf {
-	data_dir.join("flock_state.db")
+	data_dir.join("hodos_state.db")
 }
 
 // ---------------------------------------------------------------------------
@@ -438,7 +438,7 @@ pub fn spawn_writer(data_dir: &Path) -> Result<StateWriter, String> {
 	let conn = open_state_db(data_dir)?;
 	let (tx, rx) = mpsc::channel::<PersistOp>();
 	let join = std::thread::Builder::new()
-		.name("flock-state-writer".into())
+		.name("hodos-state-writer".into())
 		.spawn(move || writer_loop(conn, rx))
 		.map_err(|e| format!("cannot spawn state writer: {e}"))?;
 	Ok(StateWriter { handle: PersistHandle { tx: Some(tx) }, join: Some(join) })
@@ -450,7 +450,7 @@ fn writer_loop(conn: rusqlite::Connection, rx: mpsc::Receiver<PersistOp>) {
 			break;
 		}
 		if let Err(e) = apply_op(&conn, op) {
-			eprintln!("[flock-state] write failed: {e}");
+			eprintln!("[hodos-state] write failed: {e}");
 		}
 	}
 }
@@ -623,7 +623,7 @@ pub fn restore(
 		let report =
 			import_astmatrix(&astmatrix_db_default(), data_dir, now_unix, 3600).unwrap_or_default();
 		if report.imported_anything() {
-			eprintln!("[flock-state] imported AstMatrix state: {report:?}");
+			eprintln!("[hodos-state] imported AstMatrix state: {report:?}");
 		}
 	}
 	let conn = open_state_db(data_dir)?;
@@ -788,7 +788,7 @@ impl ImportReport {
 }
 
 /// One-time migration from the legacy AstMatrix SQLite database into
-/// `flock_state.db`. Credential values are never copied — only health,
+/// `hodos_state.db`. Credential values are never copied — only health,
 /// latency, failure counts, ELO-relevant signals, and session affinity.
 /// Extra AstMatrix tables (requests, model_health, healing_events,
 /// rate_limit_events, session_affinity) are carried over verbatim for
@@ -1453,7 +1453,7 @@ mod tests {
 
 	fn tempfile_like() -> PathBuf {
 		let d = std::env::temp_dir().join(format!(
-			"flock-health-test-{}-{}",
+			"hodos-health-test-{}-{}",
 			std::process::id(),
 			rand_suffix()
 		));

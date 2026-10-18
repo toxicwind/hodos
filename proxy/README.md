@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="docs/assets/logo.png" alt="flock" width="140">
+<img src="docs/assets/logo.png" alt="hodos" width="140">
 
-# flock
+# hodos
 
 **One router for every model you can reach — cloud APIs and local fleets —
 with the rate-limit brains to stay inside every provider's speed limit.**
@@ -16,7 +16,7 @@ Speaks **OpenAI** (`/v1/chat/completions`) **and Anthropic**
 [![Rust](https://img.shields.io/badge/rust-nightly-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org)
 [![Uptime](https://img.shields.io/badge/focus-zero%20rate%20violations-2EA043)](#how-it-works)
 
-<img src="docs/assets/dashboard-overview.png" alt="flock dashboard: Overview tab" width="850">
+<img src="docs/assets/dashboard-overview.png" alt="hodos dashboard: Overview tab" width="850">
 
 </div>
 
@@ -25,13 +25,13 @@ Speaks **OpenAI** (`/v1/chat/completions`) **and Anthropic**
 Free model tiers don't cost money — they cost **patience**. NVIDIA NIM's free
 tier is ~40 requests/minute per key; other providers have their own ceilings.
 When an agent hits the limit, the upstream answers 429 and most clients simply
-abort. flock sits between your agents and every provider and makes the limit
+abort. hodos sits between your agents and every provider and makes the limit
 invisible:
 
 ```
  Claude Code ──┐                        ┌─► NVIDIA NIM (key pool, paced)
  OpenCode    ──┤   OpenAI   ┌─────────┤─► OpenRouter · Groq · Cerebras · …
- Codex       ──┼────────────►  FLOCK  ├─► local llama-swap herd
+ Codex       ──┼────────────►  HODOS  ├─► local llama-swap herd
  n8n / SDKs  ──┘   Anthropic └─────────┤─► any OpenAI-compatible endpoint
       /v1/messages  /v1/chat/completions
 ```
@@ -52,7 +52,7 @@ API keys while keeping every key inside its documented speed limit.
 - **Claude Code, natively** — `POST /v1/messages` and
   `/v1/messages/count_tokens` translate the Anthropic wire protocol
   (content blocks, tool use, streaming event grammar) to any OpenAI-shaped
-  upstream. Point `ANTHROPIC_BASE_URL` at flock and go.
+  upstream. Point `ANTHROPIC_BASE_URL` at hodos and go.
 - **Multi-provider routing** — 30+ providers from the generated Roost
   catalog (NIM, OpenRouter, Groq, Cerebras, Together, Mistral, Google EAP,
   local herds…), selected by named strategies with Elo health scoring and
@@ -77,13 +77,13 @@ export NIM_API_KEYS="nvapi-key1 nvapi-key2"   # NVIDIA keys (40 RPM each)
 export PROXY_API_KEYS="npk_client1"           # keys your clients present
 export PORT=8000 DATA_DIR=./data
 
-./target/release/flock
+./target/release/hodos
 ```
 
 Or run the interactive wizard (first visitor claims the superuser):
 
 ```bash
-PORT=8000 DATA_DIR=./data ./target/release/flock
+PORT=8000 DATA_DIR=./data ./target/release/hodos
 # open http://localhost:8000 → /setup
 ```
 
@@ -97,7 +97,7 @@ claude   # requests hit /v1/messages → translated → your model fleet
 ```
 
 `claude-*` model ids map to the strongest verified model by default;
-override with `FLOCK_ANTHROPIC_DEFAULT_MODEL` or request any real id
+override with `HODOS_ANTHROPIC_DEFAULT_MODEL` or request any real id
 verbatim.
 
 ### OpenAI-compatible clients
@@ -114,9 +114,9 @@ curl -s localhost:8000/v1/chat/completions \
 ```jsonc
 {
   "provider": {
-    "flock": {
-      "name": "Flock (local router)",
-      "env": ["FLOCK_CLIENT_KEY"],
+    "hodos": {
+      "name": "Hodos (local router)",
+      "env": ["HODOS_CLIENT_KEY"],
       "npm": "@ai-sdk/openai-compatible",
       "options": { "baseURL": "http://127.0.0.1:25193/v1" },
       "models": {
@@ -151,7 +151,7 @@ they never appear in logs, metrics, or responses.
 ## How it works
 
 1. **Admission** — client auth (keyed or open), in-flight shed, deadline
-   header (`x-flock-deadline-ms`).
+   header (`x-hodos-deadline-ms`).
 2. **Dispatch** — global FIFO + per-lane permit; the model-pressure governor
    parks lanes that hit a provider's worker ceiling (adaptive, dissolves on
    pressure clear).
@@ -190,7 +190,7 @@ storms, governor pressure lifecycle, and retention across restarts.
 ## Provenance
 
 The proxy core derives from [miztertea/nim-proxy](https://github.com/miztertea/nim-proxy)
-(MIT) — one canonical build absorbed into the flock tree (v0.6.6, zero feature
+(MIT) — one canonical build absorbed into the hodos tree (v0.6.6, zero feature
 loss; see `FEATURE_PARITY.md`). Deliberate compatibility keeps: the
 `nimproxy-history` record marker, `X-Nim-Keys-Deadline` header, and
 `/api/settings/nim-keys` route.
@@ -205,5 +205,5 @@ release note.
 
 ## License
 
-[MIT](LICENSE) — upstream nim-proxy © its authors; flock changes © flock
+[MIT](LICENSE) — upstream nim-proxy © its authors; hodos changes © hodos
 contributors.

@@ -1,4 +1,4 @@
-//! The provider router: Flock's multi-provider remote API/completions
+//! The provider router: Hodos's multi-provider remote API/completions
 //! subsystem, absorbing AstMatrix and nim-proxy behind Herd `:25100`.
 //!
 //! One [`ProviderRuntime`] per provider. Each runtime owns exactly the
@@ -822,7 +822,7 @@ impl RouterHandle {
 			RouteError::Unavailable(format!("unknown provider {}", candidate.provider))
 		})?;
 		rt.metrics.requests.fetch_add(1, Ordering::Relaxed);
-		counter!("flock_route_requests_total", "provider" => candidate.provider.clone()).increment(1);
+		counter!("hodos_route_requests_total", "provider" => candidate.provider.clone()).increment(1);
 
 		// Circuit gate (mutating: a half-open trial consumes the single-probe
 		// lease). Every early return below this gate releases the lease —
@@ -832,7 +832,7 @@ impl RouterHandle {
 			let mut cb = rt.circuit.lock().unwrap();
 			if !cb.allow() {
 				rt.metrics.circuit_rejected.fetch_add(1, Ordering::Relaxed);
-				counter!("flock_route_circuit_rejected_total", "provider" => candidate.provider.clone())
+				counter!("hodos_route_circuit_rejected_total", "provider" => candidate.provider.clone())
                     .increment(1);
 				return Err(RouteError::Unavailable(format!(
 					"circuit open for {}",
@@ -849,7 +849,7 @@ impl RouterHandle {
 			.allow(&candidate.provider)
 		{
 			rt.metrics.rate_limited.fetch_add(1, Ordering::Relaxed);
-			counter!("flock_route_rate_limited_total", "provider" => candidate.provider.clone())
+			counter!("hodos_route_rate_limited_total", "provider" => candidate.provider.clone())
 				.increment(1);
 			rt.circuit.lock().unwrap().release_probe();
 			return Err(RouteError::RateLimited(candidate.provider.clone()));
@@ -929,7 +929,7 @@ impl RouterHandle {
 			}
 			if Instant::now() + governor::POLL > ctx.deadline {
 				rt.metrics.errors.fetch_add(1, Ordering::Relaxed);
-				counter!("flock_route_errors_total", "provider" => candidate.provider.clone())
+				counter!("hodos_route_errors_total", "provider" => candidate.provider.clone())
 					.increment(1);
 				return Err(RouteError::Deadline);
 			}
@@ -967,7 +967,7 @@ impl RouterHandle {
 				);
 			}
 		}
-		counter!("flock_route_success_total",
+		counter!("hodos_route_success_total",
             "provider" => acq.provider.clone(),
             "status" => status.to_string())
 		.increment(1);
@@ -1019,7 +1019,7 @@ impl RouterHandle {
 			self.record_empty_strike(&acq.provider, &acq.model);
 		}
 		if let Some((label, backoff)) = cooldown {
-			counter!("flock_lane_cooldown_total",
+			counter!("hodos_lane_cooldown_total",
                 "lane" => acq.slot.lane.to_string(),
                 "status" => label.clone())
 			.increment(1);
@@ -1040,7 +1040,7 @@ impl RouterHandle {
 				.copied();
 			rt.governor.note_exhausted(&acq.model, pinned);
 		}
-		counter!("flock_route_errors_total",
+		counter!("hodos_route_errors_total",
             "provider" => acq.provider.clone(),
             "status" => status.to_string())
 		.increment(1);
@@ -1084,14 +1084,14 @@ impl RouterHandle {
 			rt.governor.note_exhausted(model, pinned);
 		}
 		rt.metrics.requests.fetch_add(1, Ordering::Relaxed);
-		counter!("flock_route_attempt_total",
+		counter!("hodos_route_attempt_total",
             "provider" => provider.to_string(),
             "status" => status.to_string())
 		.increment(1);
 	}
 
 	/// Record an empty completion (2xx, no content, no tool calls) against a
-	/// provider/model pair. Surfaced as the flock_model_empty_strikes gauge.
+	/// provider/model pair. Surfaced as the hodos_model_empty_strikes gauge.
 	pub fn record_empty_strike(&self, provider: &str, model: &str) {
 		let mut strikes = self.inner.empty_strikes.lock().unwrap();
 		let entry = strikes
@@ -1100,7 +1100,7 @@ impl RouterHandle {
 		entry.0 += 1;
 		entry.1 = Instant::now();
 		gauge!(
-			 "flock_model_empty_strikes",
+			 "hodos_model_empty_strikes",
 			 "provider" => provider.to_owned(),
 			 "model" => model.to_owned(),
 		)
@@ -1296,7 +1296,7 @@ impl RouterHandle {
 							let latency = started.elapsed();
 							this.inner.health.record_latency(&name, latency);
 							this.inner.health.record_health(&name, true, now_unix);
-							gauge!("flock_provider_latency_ms", "provider" => name.clone())
+							gauge!("hodos_provider_latency_ms", "provider" => name.clone())
 								.set(latency.as_secs_f64() * 1000.0);
 						},
 						Ok(Ok(r)) => {
@@ -1484,7 +1484,7 @@ pub struct ExecuteCtx {
 	/// `x-previous-interaction-id` carries the Gemini Interactions turn
 	/// handle: keypool (:25109) needs it to accept a `function_result`, and
 	/// `x-interaction-id` must come back on the response. Dropping them
-	/// breaks the tool loop for anything routed through flock.
+	/// breaks the tool loop for anything routed through hodos.
 	pub passthrough:     Vec<(String, String)>,
 	/// Session identity for sticky affinity.
 	pub session:         Option<String>,
@@ -1510,7 +1510,7 @@ pub enum ExecuteOutcome {
 		body:         bytes::Bytes,
 		/// Upstream headers the client must see, e.g. `x-interaction-id`
 		/// from keypool. Without relaying it, a Gemini tool loop routed
-		/// through flock has no turn handle for its second turn.
+		/// through hodos has no turn handle for its second turn.
 		extra:        Vec<(String, String)>,
 	},
 	/// Shared buffered response (coalescing on): the leader read the full
@@ -1979,7 +1979,7 @@ mod tests {
 			governor_overrides: RwLock::new(Default::default()),
 			governor_enabled: AtomicBool::new(true),
 			client: reqwest::Client::new(),
-			data_dir: PathBuf::from("/tmp/flock-router-test"),
+			data_dir: PathBuf::from("/tmp/hodos-router-test"),
 			writer: Mutex::new(None),
 			empty_strikes: Mutex::new(HashMap::new()),
 		});

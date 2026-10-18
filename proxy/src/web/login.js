@@ -1,6 +1,6 @@
 "use strict";
 
-const EMERGENCY_MESSAGE = "Flock interface failed to load.";
+const EMERGENCY_MESSAGE = "Hodos interface failed to load.";
 let MSG;
 
 function failInterface() {

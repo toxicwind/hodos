@@ -7,8 +7,8 @@
 pub const ROOST_PROVENANCE: &str = "@ranch/roost src/data.ts";
 
 /// One provider's wire data, generated from the Roost catalog.
-/// Flock builds its operational ProviderDefs from this table merged with
-/// flock's hand-maintained overlay (elo/weight/free-tier/model-map); the
+/// Hodos builds its operational ProviderDefs from this table merged with
+/// hodos's hand-maintained overlay (elo/weight/free-tier/model-map); the
 /// wire fields here (base URLs, key env vars, adapters, seeds) are never
 /// hand-edited.
 pub struct RoostProvider {
@@ -31,7 +31,7 @@ pub struct RoostProvider {
     pub query_param: &'static str,
     /// Path appended to base_url. Defaults per adapter ("openai" -> "/models").
     pub models_path: &'static str,
-    /// TS-router-local concept (local proxies/shims); flock skips these.
+    /// TS-router-local concept (local proxies/shims); hodos skips these.
     pub router_local: bool,
     /// Disabled providers are never fetched and never served.
     pub enabled: bool,

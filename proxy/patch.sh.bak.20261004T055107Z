@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-#  flock-maxfix-2026.sh — one-shot consolidation + deprecation + normalization
+#  hodos-maxfix-2026.sh — one-shot consolidation + deprecation + normalization
 # ═══════════════════════════════════════════════════════════════════════════════
 #  Discovery-driven. Idempotent. No rollback. No truncation.
 #  Every path is discovered; nothing hardcoded except $HOME and the known
 #  prefix patterns. Additive: marks deprecated, does not delete.
 #
 #  Usage:
-#    bash flock-maxfix-2026.sh --dry-run          # show everything, change nothing
-#    bash flock-maxfix-2026.sh                    # apply (keeps Rust flock alive)
-#    bash flock-maxfix-2026.sh --restart-flock    # also restart :25193 with new cfg
-#    bash flock-maxfix-2026.sh --purge-routers    # also move dup routers to .deprecated/
+#    bash hodos-maxfix-2026.sh --dry-run          # show everything, change nothing
+#    bash hodos-maxfix-2026.sh                    # apply (keeps Rust hodos alive)
+#    bash hodos-maxfix-2026.sh --restart-hodos    # also restart :25193 with new cfg
+#    bash hodos-maxfix-2026.sh --purge-routers    # also move dup routers to .deprecated/
 # ═══════════════════════════════════════════════════════════════════════════════
 set -uo pipefail
 
 DRY=0; RESTART=0; PURGE=0
 for a in "$@"; do case "$a" in
   --dry-run) DRY=1;;
-  --restart-flock) RESTART=1;;
+  --restart-hodos) RESTART=1;;
   --purge-routers) PURGE=1;;
 esac; done
 
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-RUN="$HOME/.flock-maxfix/$STAMP"
+RUN="$HOME/.hodos-maxfix/$STAMP"
 mkdir -p "$RUN"
 LOG="$RUN/fix.log"
 FIND="$RUN/findings.tsv"
@@ -35,7 +35,7 @@ rec(){ printf "%s\t%s\t%s\n" "${1:-}" "${2:-}" "${3:-}" >> "$FIND"; }
 plan(){ printf "%s\t%s\n" "${1:-}" "${2:-}" >> "$PLAN"; }
 dry(){ [ "$DRY" -eq 1 ] && { log "  DRY: $*"; return 0; }; return 1; }
 
-hdr "flock-maxfix $STAMP"
+hdr "hodos-maxfix $STAMP"
 log "DRY=$DRY RESTART=$RESTART PURGE=$PURGE"
 log "RUN=$RUN"
 
@@ -44,20 +44,20 @@ log "RUN=$RUN"
 # ═══════════════════════════════════════════════════════════════════════════════
 hdr "0. DISCOVERY"
 
-# 0a. every flock-family binary on disk
+# 0a. every hodos-family binary on disk
 : > "$RUN/binaries.txt"
 for root in "$HOME" /opt /srv /usr/local; do
   [ -d "$root" ] || continue
   find "$root" -maxdepth 12 -type f \
-    \( -name 'flock' -o -name 'flock-*' -o -name '*flock*' \) \
+    \( -name 'hodos' -o -name 'hodos-*' -o -name '*hodos*' \) \
     ! -path '*/.cargo/registry/*' ! -path '*/node_modules/*' \
     ! -path '*/.git/*' ! -path '*/.cache/*' ! -path '*/target/debug/deps/*' \
     -print 2>/dev/null
 done | sort -u >> "$RUN/binaries.txt"
 
-# 0b. every live flock-family process
+# 0b. every live hodos-family process
 : > "$RUN/procs.txt"
-pgrep -af 'flock|nim-proxy|estate-scripts-router|cuttinggate|flock-py' 2>/dev/null | while read -r line; do
+pgrep -af 'hodos|nim-proxy|estate-scripts-router|cuttinggate|hodos-py' 2>/dev/null | while read -r line; do
   pid=$(printf '%s' "$line" | awk '{print $1}')
   exe=$(readlink -f "/proc/$pid/exe" 2>/dev/null)
   cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
@@ -69,16 +69,16 @@ done
 ss -tlnp 2>/dev/null | awk 'NR>1{print}' | grep -oE ':[2][0-9]{4}.*users:\(\("[^"]+"' | \
   sed -E 's/^:([0-9]+).*\("([^"]+)"/\1\t\2/' | sort -u >> "$RUN/listeners.txt"
 
-# 0d. every config file bearing the flock name
+# 0d. every config file bearing the hodos name
 : > "$RUN/configs.txt"
-for root in "$HOME/.flock" "$HOME/.flock-data" "$HOME/.config/flock" \
-            "$HOME/estate/ranch/flock" "$HOME/estate/config" \
-            "$HOME/estate/ranch/mesh/proxy/flock-proxy" \
+for root in "$HOME/.hodos" "$HOME/.hodos-data" "$HOME/.config/hodos" \
+            "$HOME/estate/ranch/hodos" "$HOME/estate/config" \
+            "$HOME/estate/ranch/mesh/proxy/hodos-proxy" \
             "$HOME/estate/ranch/mesh/router" "$HOME/.tau" /etc; do
   [ -e "$root" ] || continue
   find "$root" -maxdepth 6 -type f \
     \( -name '*.toml' -o -name '*.yaml' -o -name '*.yml' -o -name '*.json' \
-       -o -name '*.env' -o -name 'ports.env' -o -name 'flock*' \) \
+       -o -name '*.env' -o -name 'ports.env' -o -name 'hodos*' \) \
     ! -path '*/node_modules/*' ! -path '*/.git/*' ! -path '*/target/*' \
     -print 2>/dev/null
 done | sort -u >> "$RUN/configs.txt"
@@ -93,19 +93,19 @@ log "configs:   $(wc -l < "$RUN/configs.txt")"
 # ═══════════════════════════════════════════════════════════════════════════════
 hdr "1. SSOT — single source of truth"
 
-SSOT_DIR="$HOME/estate/config/flock-ssot"
+SSOT_DIR="$HOME/estate/config/hodos-ssot"
 dry mkdir -p "$SSOT_DIR" || mkdir -p "$SSOT_DIR"
 
 # 1a. ports.env — discovered, not invented
 PORTS="$SSOT_DIR/ports.env"
 if dry :; then :; else
   {
-    echo "# flock-ssot/ports.env — generated $STAMP"
+    echo "# hodos-ssot/ports.env — generated $STAMP"
     echo "# Source: live listeners + discovered configs. Never invent non-25xxx."
     echo "# Precedence: service-specific wins over generic."
     echo ""
     echo "# --- canonical ---"
-    echo "FLOCK_PORT=25193"
+    echo "HODOS_PORT=25193"
     echo "estate-scripts_ROUTER_PORT=25104"
     echo "ASTMATRIX_PORT=25214"
     echo "HERD_PORT=25100"
@@ -120,7 +120,7 @@ if dry :; then :; else
     echo "NIM_PROXY_PORT="
     echo ""
     echo "# --- derived ---"
-    echo "FLOCK_URL=http://127.0.0.1:\${FLOCK_PORT}/v1"
+    echo "HODOS_URL=http://127.0.0.1:\${HODOS_PORT}/v1"
     echo "estate-scripts_ROUTER_URL=http://127.0.0.1:\${estate-scripts_ROUTER_PORT}/v1"
   } > "$PORTS.tmp" && mv "$PORTS.tmp" "$PORTS"
 fi
@@ -150,9 +150,9 @@ ENVMAP="$SSOT_DIR/env-aliases.tsv"
 if dry :; then :; else
   {
     printf 'canonical\taliases\tscope\n'
-    printf 'FLOCK_API_KEY\tPROXY_API_KEYS,NIM_PROXY_API_KEY\tproxy client auth\n'
-    printf 'FLOCK_PORT\tPORT,FLOCK_PORT\tproxy listen\n'
-    printf 'FLOCK_DATA_DIR\tDATA_DIR\tproxy state\n'
+    printf 'HODOS_API_KEY\tPROXY_API_KEYS,NIM_PROXY_API_KEY\tproxy client auth\n'
+    printf 'HODOS_PORT\tPORT,HODOS_PORT\tproxy listen\n'
+    printf 'HODOS_DATA_DIR\tDATA_DIR\tproxy state\n'
     printf 'NIM_API_KEYS\tNVIDIA_API_KEYS,NVIDIA_API_KEY\tupstream provider\n'
     printf 'NIM_BASE_URL\tNVIDIA_BASE_URL\tupstream base\n'
     printf 'estate-scripts_ROUTER_PORT\testate-scripts_PORT\trouter listen\n'
@@ -173,15 +173,15 @@ LIVE_PID=$(ss -tlnpH 'sport = :25193' 2>/dev/null | grep -oP 'pid=\K[0-9]+' | he
 if [ -n "$LIVE_PID" ]; then
   LIVE_EXE=$(readlink -f "/proc/$LIVE_PID/exe" 2>/dev/null)
   LIVE_HASH=$(sha256sum "/proc/$LIVE_PID/exe" 2>/dev/null | awk '{print $1}')
-  DISK_HASH=$(sha256sum "$HOME/.flock/flock" 2>/dev/null | awk '{print $1}')
+  DISK_HASH=$(sha256sum "$HOME/.hodos/hodos" 2>/dev/null | awk '{print $1}')
   rec binary :25193 "pid=$LIVE_PID hash=$LIVE_HASH"
   if [ "$LIVE_HASH" = "$DISK_HASH" ]; then
-    log "  :25193 = $LIVE_EXE (hash matches ~/.flock/flock)"
-    plan keep "Rust flock is the canonical :25193 owner"
+    log "  :25193 = $LIVE_EXE (hash matches ~/.hodos/hodos)"
+    plan keep "Rust hodos is the canonical :25193 owner"
   else
-    log "  :25193 = $LIVE_EXE (hash MISMATCH vs ~/.flock/flock)"
+    log "  :25193 = $LIVE_EXE (hash MISMATCH vs ~/.hodos/hodos)"
     rec binary :25193 "hash mismatch — running binary differs from on-disk"
-    plan inspect "Restart flock to load on-disk binary, or update disk binary"
+    plan inspect "Restart hodos to load on-disk binary, or update disk binary"
   fi
 else
   log "  :25193 has no owner"
@@ -190,9 +190,9 @@ fi
 
 # 2b. retire everything else claiming to be a router
 declare -A ROUTERS=(
-  [rust]="$HOME/estate/ranch/mesh/proxy/flock-proxy"
-  [ts]="$HOME/estate/ranch/flock/ts/strategy/router.ts"
-  [py]="$HOME/estate/ranch/mesh/router/flock-py/router_server.py"
+  [rust]="$HOME/estate/ranch/mesh/proxy/hodos-proxy"
+  [ts]="$HOME/estate/ranch/hodos/ts/strategy/router.ts"
+  [py]="$HOME/estate/ranch/mesh/router/hodos-py/router_server.py"
   [sov]="$HOME/estate/ranch/mesh/router/estate-scripts-router/estate-scripts-router-ts/router.ts"
   [cut]="$HOME/estate/ranch/mesh/proxy/cuttinggate/src/strategy/router.ts"
 )
@@ -209,10 +209,10 @@ for k in "${!ROUTERS[@]}"; do
 done
 
 # 2c. inject deprecation banners (additive; does not delete)
-banner_ts='// ⚠️  DEPRECATED 2026-10-04 — superseded by Rust flock on :25193.
-// Kept for reference; do not deploy. See flock-ssot/ROUTER_CANON.md.'
-banner_py='# ⚠️  DEPRECATED 2026-10-04 — superseded by Rust flock on :25193.
-# Kept for reference; do not deploy. See flock-ssot/ROUTER_CANON.md.'
+banner_ts='// ⚠️  DEPRECATED 2026-10-04 — superseded by Rust hodos on :25193.
+// Kept for reference; do not deploy. See hodos-ssot/ROUTER_CANON.md.'
+banner_py='# ⚠️  DEPRECATED 2026-10-04 — superseded by Rust hodos on :25193.
+# Kept for reference; do not deploy. See hodos-ssot/ROUTER_CANON.md.'
 
 for p in "${ROUTERS[ts]}" "${ROUTERS[cut]}"; do
   [ -f "$p" ] || continue
@@ -248,13 +248,13 @@ if [ "$PURGE" -eq 1 ] && [ "$DRY" -eq 0 ]; then
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 3. PORT NORMALIZATION (flock-final.sh 8000 → 25193)
+# 3. PORT NORMALIZATION (hodos-final.sh 8000 → 25193)
 # ═══════════════════════════════════════════════════════════════════════════════
 hdr "3. port normalization"
 
 while IFS= read -r f; do
   [ -f "$f" ] || continue
-  if grep -qE 'PORT=8000|FLOCK_PORT.*=.*"8000"|127\.0\.0\.1:8000' "$f" 2>/dev/null; then
+  if grep -qE 'PORT=8000|HODOS_PORT.*=.*"8000"|127\.0\.0\.1:8000' "$f" 2>/dev/null; then
     rec port "$f" "references 8000"
     if dry "would rewrite 8000→25193 in $f"; then :
     else
@@ -275,7 +275,7 @@ done < <(grep -rlE 'PORT=8000|127\.0\.0\.1:8000' \
          | grep -vE '\.bak\.|/target/|/node_modules/|/\.git/' | sort -u)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 4. HEADER NORMALIZATION (X-Nim-Proxy-Deadline-Ms → X-Flock-Deadline-Ms)
+# 4. HEADER NORMALIZATION (X-Nim-Proxy-Deadline-Ms → X-Hodos-Deadline-Ms)
 # ═══════════════════════════════════════════════════════════════════════════════
 hdr "4. header normalization"
 
@@ -284,22 +284,22 @@ HDRMAP="$SSOT_DIR/header-aliases.tsv"
 if dry :; then :; else
   {
     printf 'canonical\taliases\tnote\n'
-    printf 'X-Flock-Deadline-Ms\tX-Nim-Proxy-Deadline-Ms\tabsolute wall-clock ms deadline\n'
-    printf 'X-Flock-Trace-Id\tX-Routed-Via, X-estate-scripts-Timings\ttrace id + provider/model/timings\n'
-    printf 'X-Flock-Overhead-Ms\tX-Router-Overhead-Ms\tinternal routing overhead\n'
+    printf 'X-Hodos-Deadline-Ms\tX-Nim-Proxy-Deadline-Ms\tabsolute wall-clock ms deadline\n'
+    printf 'X-Hodos-Trace-Id\tX-Routed-Via, X-estate-scripts-Timings\ttrace id + provider/model/timings\n'
+    printf 'X-Hodos-Overhead-Ms\tX-Router-Overhead-Ms\tinternal routing overhead\n'
   } > "$HDRMAP.tmp" && mv "$HDRMAP.tmp" "$HDRMAP"
 fi
 log "wrote $HDRMAP"
 
 # 4b. Rust binary already reads X-Nim-Proxy-Deadline-Ms; patch run wrapper to
-#     translate X-Flock-Deadline-Ms → X-Nim-Proxy-Deadline-Ms on inbound
-WRAP="$HOME/estate/ranch/flock/bin/flock-run.sh"
+#     translate X-Hodos-Deadline-Ms → X-Nim-Proxy-Deadline-Ms on inbound
+WRAP="$HOME/estate/ranch/hodos/bin/hodos-run.sh"
 if [ -f "$WRAP" ]; then
-  if grep -q 'X-Flock-Deadline-Ms' "$WRAP" 2>/dev/null; then
-    log "  wrapper already handles X-Flock-Deadline-Ms"
+  if grep -q 'X-Hodos-Deadline-Ms' "$WRAP" 2>/dev/null; then
+    log "  wrapper already handles X-Hodos-Deadline-Ms"
   else
-    rec header "$WRAP" "missing X-Flock→X-Nim-Proxy deadline translation"
-    plan patch "add header translation shim to flock-run.sh"
+    rec header "$WRAP" "missing X-Hodos→X-Nim-Proxy deadline translation"
+    plan patch "add header translation shim to hodos-run.sh"
   fi
 fi
 
@@ -313,47 +313,47 @@ SHIM="$SSOT_DIR/env-shim.sh"
 if dry :; then :; else
   {
     echo "#!/usr/bin/env bash"
-    echo "# flock-ssot/env-shim.sh — generated $STAMP"
-    echo "# Idempotent alias layer. Source before launching flock/router/herd."
+    echo "# hodos-ssot/env-shim.sh — generated $STAMP"
+    echo "# Idempotent alias layer. Source before launching hodos/router/herd."
     echo ""
     echo "# Client API key"
-    echo ': "${FLOCK_API_KEY:=${PROXY_API_KEYS:-${NIM_PROXY_API_KEY:-}}}"'
-    echo 'export PROXY_API_KEYS="$FLOCK_API_KEY"'
-    echo 'export NIM_PROXY_API_KEY="$FLOCK_API_KEY"'
+    echo ': "${HODOS_API_KEY:=${PROXY_API_KEYS:-${NIM_PROXY_API_KEY:-}}}"'
+    echo 'export PROXY_API_KEYS="$HODOS_API_KEY"'
+    echo 'export NIM_PROXY_API_KEY="$HODOS_API_KEY"'
     echo ""
     echo "# Port"
-    echo ': "${FLOCK_PORT:=25193}"'
-    echo 'export PORT="$FLOCK_PORT"'
+    echo ': "${HODOS_PORT:=25193}"'
+    echo 'export PORT="$HODOS_PORT"'
     echo ""
     echo "# Data dir"
-    echo ': "${FLOCK_DATA_DIR:=${DATA_DIR:-$HOME/.flock-data}}"'
-    echo 'export DATA_DIR="$FLOCK_DATA_DIR"'
+    echo ': "${HODOS_DATA_DIR:=${DATA_DIR:-$HOME/.hodos-data}}"'
+    echo 'export DATA_DIR="$HODOS_DATA_DIR"'
     echo ""
     echo "# Router port"
     echo ': "${estate-scripts_ROUTER_PORT:=25104}"'
     echo 'export estate-scripts_PORT="$estate-scripts_ROUTER_PORT"'
     echo ""
     echo "# Header translation (for Rust binary that reads X-Nim-Proxy-*)"
-    echo 'export FLOCK_HEADER_DEADLINE="X-Nim-Proxy-Deadline-Ms"'
-    echo 'export FLOCK_HEADER_TRACE="X-Routed-Via"'
-    echo 'export FLOCK_HEADER_OVERHEAD="X-Router-Overhead-Ms"'
+    echo 'export HODOS_HEADER_DEADLINE="X-Nim-Proxy-Deadline-Ms"'
+    echo 'export HODOS_HEADER_TRACE="X-Routed-Via"'
+    echo 'export HODOS_HEADER_OVERHEAD="X-Router-Overhead-Ms"'
   } > "$SHIM.tmp" && mv "$SHIM.tmp" "$SHIM"
   chmod 0755 "$SHIM"
 fi
 log "wrote $SHIM"
 
 # 5b. patch every launch script to source the shim
-for f in "$WRAP" "$HOME/estate/ranch/flock/flock-final.sh"; do
+for f in "$WRAP" "$HOME/estate/ranch/hodos/hodos-final.sh"; do
   [ -f "$f" ] || continue
-  if grep -q 'flock-ssot/env-shim.sh' "$f" 2>/dev/null; then
+  if grep -q 'hodos-ssot/env-shim.sh' "$f" 2>/dev/null; then
     log "  shim already sourced in $f"
   elif dry "would add shim source to $f"; then :
   else
     # insert after shebang if present, else at top
     if head -1 "$f" | grep -q '^#!'; then
-      { head -1 "$f"; echo ""; echo '. "$HOME/estate/config/flock-ssot/env-shim.sh" 2>/dev/null || true'; tail -n +2 "$f"; } > "$f.tmp"
+      { head -1 "$f"; echo ""; echo '. "$HOME/estate/config/hodos-ssot/env-shim.sh" 2>/dev/null || true'; tail -n +2 "$f"; } > "$f.tmp"
     else
-      { echo '. "$HOME/estate/config/flock-ssot/env-shim.sh" 2>/dev/null || true'; cat "$f"; } > "$f.tmp"
+      { echo '. "$HOME/estate/config/hodos-ssot/env-shim.sh" 2>/dev/null || true'; cat "$f"; } > "$f.tmp"
     fi
     mv "$f.tmp" "$f"
     log "  shim sourced in $f"
@@ -366,8 +366,8 @@ done
 # ═══════════════════════════════════════════════════════════════════════════════
 hdr "6. model deprecation"
 
-# 6a. the flock binary reads config.json; find and patch it
-BIN_CFG="$HOME/.flock-data/config.json"
+# 6a. the hodos binary reads config.json; find and patch it
+BIN_CFG="$HOME/.hodos-data/config.json"
 if [ -f "$BIN_CFG" ]; then
   rec cfg "$BIN_CFG" "present, $(stat -c%s "$BIN_CFG") bytes"
   if command -v jq >/dev/null 2>&1; then
@@ -402,7 +402,7 @@ else
 fi
 
 # 6b. patch TS router's PROVIDERS map if present
-TS_CFG="$HOME/estate/ranch/flock/ts/strategy/router_config.ts"
+TS_CFG="$HOME/estate/ranch/hodos/ts/strategy/router_config.ts"
 if [ -f "$TS_CFG" ]; then
   rec cfg "$TS_CFG" "present, $(stat -c%s "$TS_CFG") bytes"
   while IFS=$'\t' read -r m prov dep ret repl src; do
@@ -425,8 +425,8 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════
 hdr "7. pitchfork.toml conflict resolution"
 
-# find all pitchfork.toml files with flock
-mapfile -t PF < <(grep -rl 'flock' "$HOME" --include='pitchfork.toml' 2>/dev/null \
+# find all pitchfork.toml files with hodos
+mapfile -t PF < <(grep -rl 'hodos' "$HOME" --include='pitchfork.toml' 2>/dev/null \
                   | grep -vE '/target/|/node_modules/|/\.git/' | sort -u)
 for f in "${PF[@]}"; do
   [ -f "$f" ] || continue
@@ -454,7 +454,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════
 hdr "8. key-recovery neutralization"
 
-mapfile -t GRAB < <(find "$HOME" -maxdepth 8 -type f -name 'grab-flock-key.sh' 2>/dev/null \
+mapfile -t GRAB < <(find "$HOME" -maxdepth 8 -type f -name 'grab-hodos-key.sh' 2>/dev/null \
                     | grep -vE '/target/|/node_modules/|/\.git/')
 for f in "${GRAB[@]}"; do
   [ -f "$f" ] || continue
@@ -504,16 +504,16 @@ if dry :; then :; else
     echo ""
     echo "## The one true router"
     echo ""
-    echo "**Rust flock**, binary \`\$HOME/.flock/flock\`, listening on \`:25193\`."
-    echo "Source: \`estate/ranch/mesh/proxy/flock-proxy/\`."
-    echo "Persistence: SQLite WAL at \`\$FLOCK_ASTMATRIX_DB\`."
+    echo "**Rust hodos**, binary \`\$HOME/.hodos/hodos\`, listening on \`:25193\`."
+    echo "Source: \`estate/ranch/mesh/proxy/hodos-proxy/\`."
+    echo "Persistence: SQLite WAL at \`\$HODOS_ASTMATRIX_DB\`."
     echo ""
     echo "## Deprecated siblings"
     echo ""
     echo "| impl | path | error vocabulary | status |"
     echo "|---|---|---|---|"
-    echo "| TS router | \`flock/ts/strategy/router.ts\` | \`all_stream_providers_exhausted\` | deprecated |"
-    echo "| Py router | \`mesh/router/flock-py/router_server.py\` | \`all_stream_providers_exhausted\` | deprecated |"
+    echo "| TS router | \`hodos/ts/strategy/router.ts\` | \`all_stream_providers_exhausted\` | deprecated |"
+    echo "| Py router | \`mesh/router/hodos-py/router_server.py\` | \`all_stream_providers_exhausted\` | deprecated |"
     echo "| Sov router | \`mesh/router/estate-scripts-router/estate-scripts-router-ts/\` | \`all_stream_providers_exhausted\` (SSE) | deprecated |"
     echo "| Cuttinggate | \`mesh/proxy/cuttinggate/src/strategy/router.ts\` | \`all_stream_providers_exhausted\` | deprecated |"
     echo ""
@@ -527,11 +527,11 @@ if dry :; then :; else
     echo "## Canonical surface"
     echo ""
     echo "- Port: 25193 (from \`ports.env\`)"
-    echo "- Headers: \`X-Flock-Deadline-Ms\`, \`X-Flock-Trace-Id\`, \`X-Flock-Overhead-Ms\`"
-    echo "- Metrics: \`flock_requests_total\`, \`flock_shed_total\`,"
-    echo "  \`flock_worker_exhausted_total\`, \`flock_unauthorized_total\`,"
-    echo "  \`flock_queue_wait_seconds\`, \`flock_ttft_seconds\`, \`flock_upstream_seconds\`"
-    echo "- Auth: \`Authorization: Bearer <FLOCK_API_KEY>\`"
+    echo "- Headers: \`X-Hodos-Deadline-Ms\`, \`X-Hodos-Trace-Id\`, \`X-Hodos-Overhead-Ms\`"
+    echo "- Metrics: \`hodos_requests_total\`, \`hodos_shed_total\`,"
+    echo "  \`hodos_worker_exhausted_total\`, \`hodos_unauthorized_total\`,"
+    echo "  \`hodos_queue_wait_seconds\`, \`hodos_ttft_seconds\`, \`hodos_upstream_seconds\`"
+    echo "- Auth: \`Authorization: Bearer <HODOS_API_KEY>\`"
     echo ""
     echo "## SSOT files (all in this dir)"
     echo ""
@@ -547,7 +547,7 @@ fi
 log "wrote $CANON"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 11. RESTART (optional) — reload flock with new config
+# 11. RESTART (optional) — reload hodos with new config
 # ═══════════════════════════════════════════════════════════════════════════════
 hdr "11. restart (optional)"
 
@@ -560,11 +560,11 @@ if [ "$RESTART" -eq 1 ] && [ "$DRY" -eq 0 ]; then
       log "  pid $LIVE_PID still alive; config may reload in place"
     else
       log "  pid $LIVE_PID exited; consider restarting via pitchfork"
-      plan restart "pitchfork restart flock"
+      plan restart "pitchfork restart hodos"
     fi
   fi
 else
-  log "  skipped (pass --restart-flock to reload)"
+  log "  skipped (pass --restart-hodos to reload)"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════

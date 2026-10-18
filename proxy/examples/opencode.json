@@ -3,7 +3,7 @@
   "provider": {
     "nim": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "NVIDIA NIM (via flock)",
+      "name": "NVIDIA NIM (via hodos)",
       "options": {
         "baseURL": "http://localhost:8000/v1",
         "apiKey": "{env:NIM_PROXY_KEY}",

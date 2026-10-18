@@ -1,15 +1,15 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "flock dashboard API",
-    "description": "The operator surface of flock: the settings store, user and key management, and the metrics history the dashboard renders. This document is generated from the handlers; regenerate it with `UPDATE_OPENAPI=1 cargo test --test openapi`.\n\nNot covered: the OpenAI-compatible `/v1` passthrough (that contract is the upstream's, not flock's), the HTML page routes, the form-encoded `/login` and `/logout` browser flow, plain-text `/health`, and the Prometheus exposition at `/metrics`.",
+    "title": "hodos dashboard API",
+    "description": "The operator surface of hodos: the settings store, user and key management, and the metrics history the dashboard renders. This document is generated from the handlers; regenerate it with `UPDATE_OPENAPI=1 cargo test --test openapi`.\n\nNot covered: the OpenAI-compatible `/v1` passthrough (that contract is the upstream's, not hodos's), the HTML page routes, the form-encoded `/login` and `/logout` browser flow, plain-text `/health`, and the Prometheus exposition at `/metrics`.",
     "contact": {
-      "name": "flock",
-      "url": "https://github.com/toxicwind/flock"
+      "name": "hodos",
+      "url": "https://github.com/toxicwind/hodos"
     },
     "license": {
       "name": "MIT",
-      "url": "https://github.com/toxicwind/flock/blob/main/LICENSE"
+      "url": "https://github.com/toxicwind/hodos/blob/main/LICENSE"
     },
     "version": "0.6.6"
   },
@@ -1252,7 +1252,7 @@
           },
           "type": {
             "type": "string",
-            "description": "Always `proxy_error` — the error came from flock, not upstream.",
+            "description": "Always `proxy_error` — the error came from hodos, not upstream.",
             "example": "proxy_error"
           }
         }
@@ -2664,7 +2664,7 @@
       "session_cookie": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "flock_session",
+        "name": "hodos_session",
         "description": "HMAC-signed session cookie minted by POST /login. The signing key is regenerated every boot, so a restart invalidates all sessions."
       }
     }

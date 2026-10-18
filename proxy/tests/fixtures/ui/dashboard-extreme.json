@@ -13,7 +13,7 @@
   "latest": [
     {
       "labels": {},
-      "metric": "flock_active_requests",
+      "metric": "hodos_active_requests",
       "value": 4.4942328371557893e+307
     }
   ],
@@ -37,7 +37,7 @@
             "path": "/v1/chat/completions",
             "status": "200"
           },
-          "metric": "flock_requests_total",
+          "metric": "hodos_requests_total",
           "value": 4.4942328371557893e+307
         },
         {
@@ -47,7 +47,7 @@
             "path": "/v1/chat/completions",
             "status": "200"
           },
-          "metric": "flock_requests_total",
+          "metric": "hodos_requests_total",
           "value": 4.4942328371557893e+307
         }
       ]
@@ -61,7 +61,7 @@
         "path": "/v1/chat/completions",
         "status": "200"
       },
-      "metric": "flock_requests_total",
+      "metric": "hodos_requests_total",
       "value": 4.4942328371557893e+307
     },
     {
@@ -71,7 +71,7 @@
         "path": "/v1/chat/completions",
         "status": "200"
       },
-      "metric": "flock_requests_total",
+      "metric": "hodos_requests_total",
       "value": 4.4942328371557893e+307
     }
   ],

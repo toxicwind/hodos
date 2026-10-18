@@ -1018,7 +1018,7 @@ impl History {
 			if let Err(error) = store.append_sample(t, canonical_capacity(&capacity), canonical_state)
 			{
 				if !was_poisoned && store.poisoned() {
-					metrics::gauge!("flock_history_persistence_degraded").set(1.0);
+					metrics::gauge!("hodos_history_persistence_degraded").set(1.0);
 					tracing::error!("canonical history persistence degraded: {error}");
 				} else if !matches!(error, store::WriteError::Poisoned) {
 					tracing::warn!("canonical history append failed: {error}");
@@ -1060,7 +1060,7 @@ impl History {
 		.await;
 		if let Err(error) = result {
 			self.append_task_failed.store(true, Ordering::SeqCst);
-			metrics::gauge!("flock_history_persistence_degraded").set(1.0);
+			metrics::gauge!("hodos_history_persistence_degraded").set(1.0);
 			tracing::error!("history append blocking task failed: {error}");
 		}
 	}
@@ -1683,7 +1683,7 @@ mod tests {
 	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 	async fn async_append_uses_the_blocking_pool_and_waits_for_persistence() {
 		let directory =
-			std::env::temp_dir().join(format!("flock-history-append-test-{}", std::process::id()));
+			std::env::temp_dir().join(format!("hodos-history-append-test-{}", std::process::id()));
 		let _ = fs::remove_dir_all(&directory);
 		let history = Arc::new(History::open(directory.clone(), 0, capacity(40)).unwrap());
 		let (sampler_tx, sampler_rx) = std::sync::mpsc::channel();
@@ -1724,7 +1724,7 @@ mod tests {
 	#[tokio::test]
 	async fn async_append_panic_marks_persistence_degraded() {
 		let directory = std::env::temp_dir()
-			.join(format!("flock-history-append-panic-test-{}", std::process::id()));
+			.join(format!("hodos-history-append-panic-test-{}", std::process::id()));
 		let _ = fs::remove_dir_all(&directory);
 		let history = Arc::new(History::open(directory.clone(), 0, capacity(40)).unwrap());
 		history.set_append_blocking_test_hook(Arc::new(|| panic!("append test panic")));
@@ -1743,15 +1743,15 @@ mod tests {
 	}
 
 	const SNAPSHOT: &str = r#"
-# TYPE flock_requests_total counter
-flock_requests_total{client="Mindmap",model="z-ai/glm-5.2",status="200"} 12
-# TYPE flock_active_requests gauge
-flock_active_requests 2
-# TYPE flock_ttft_seconds histogram
-flock_ttft_seconds_bucket{model="z-ai/glm-5.2",le="0.5"} 3
-flock_ttft_seconds_bucket{model="z-ai/glm-5.2",le="+Inf"} 4
-flock_ttft_seconds_sum{model="z-ai/glm-5.2"} 1.25
-flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
+# TYPE hodos_requests_total counter
+hodos_requests_total{client="Mindmap",model="z-ai/glm-5.2",status="200"} 12
+# TYPE hodos_active_requests gauge
+hodos_active_requests 2
+# TYPE hodos_ttft_seconds histogram
+hodos_ttft_seconds_bucket{model="z-ai/glm-5.2",le="0.5"} 3
+hodos_ttft_seconds_bucket{model="z-ai/glm-5.2",le="+Inf"} 4
+hodos_ttft_seconds_sum{model="z-ai/glm-5.2"} 1.25
+hodos_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 "#;
 
 	#[test]
@@ -2047,8 +2047,8 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 					handle
 						.render()
 						.lines()
-						.find(|line| line.starts_with("flock_history_persistence_degraded ")),
-					Some("flock_history_persistence_degraded 1"),
+						.find(|line| line.starts_with("hodos_history_persistence_degraded ")),
+					Some("hodos_history_persistence_degraded 1"),
 					"{label}: the no-label gauge remains degraded"
 				);
 
@@ -2104,7 +2104,7 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 		let startup = history.rollup(cutoff, history.boot_t, 100);
 		assert!(startup.complete, "clean retained history is complete at startup");
 		assert_eq!(
-			value(&startup.data.totals, "flock_requests_total"),
+			value(&startup.data.totals, "hodos_requests_total"),
 			10.0,
 			"the hidden full-sample baseline preserves the retained counter delta"
 		);
@@ -2116,8 +2116,8 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 		let runtime = history.boot_t;
 		history.append(
 			runtime,
-			"# TYPE flock_requests_total counter\nflock_requests_total{client=\"equivalence\"} 40\n# \
-			 TYPE flock_active_requests gauge\nflock_active_requests{client=\"equivalence\"} 4\n",
+			"# TYPE hodos_requests_total counter\nhodos_requests_total{client=\"equivalence\"} 40\n# \
+			 TYPE hodos_active_requests gauge\nhodos_active_requests{client=\"equivalence\"} 4\n",
 			initial.clone(),
 		);
 		wait_for_canonical_compaction_idle(&history, "startup debt").await;
@@ -2153,7 +2153,7 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 		let after_restart = reopened.rollup(cutoff, reopened.boot_t, 100);
 		assert!(after_restart.complete, "retained history remains complete after restart");
 		assert_eq!(
-			value(&after_restart.data.totals, "flock_requests_total"),
+			value(&after_restart.data.totals, "hodos_requests_total"),
 			50.0,
 			"the compacted baseline and retained/live samples preserve totals after restart"
 		);
@@ -2201,8 +2201,8 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 
 		history.append(
 			history.boot_t,
-			"# TYPE flock_requests_total counter\nflock_requests_total{client=\"equivalence\"} 10\n# \
-			 TYPE flock_active_requests gauge\nflock_active_requests{client=\"equivalence\"} 3\n",
+			"# TYPE hodos_requests_total counter\nhodos_requests_total{client=\"equivalence\"} 10\n# \
+			 TYPE hodos_active_requests gauge\nhodos_active_requests{client=\"equivalence\"} 3\n",
 			initial,
 		);
 		wait_for_canonical_compaction_idle(&history, "inferred reset replay").await;
@@ -2299,8 +2299,8 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 		expected_after_live_append.push(b'\n');
 		history.append(
 			runtime,
-			"# TYPE flock_requests_total counter\nflock_requests_total{client=\"equivalence\"} 9\n# \
-			 TYPE flock_active_requests gauge\nflock_active_requests{client=\"equivalence\"} 4\n",
+			"# TYPE hodos_requests_total counter\nhodos_requests_total{client=\"equivalence\"} 9\n# \
+			 TYPE hodos_active_requests gauge\nhodos_active_requests{client=\"equivalence\"} 4\n",
 			initial.clone(),
 		);
 		wait_for_canonical_compaction_idle(&history, "intersecting recovery gap").await;
@@ -2341,7 +2341,7 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 		let current = history.rollup(cutoff_one_day, runtime, 100);
 		assert!(current.complete, "the retained query is complete after safe compaction");
 		assert_eq!(
-			value(&current.data.totals, "flock_requests_total"),
+			value(&current.data.totals, "hodos_requests_total"),
 			14.0,
 			"the recovery epoch and live reset preserve retained totals"
 		);
@@ -2355,7 +2355,7 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 		let after_restart = reopened.rollup(cutoff_one_day, reopened.boot_t, 100);
 		assert!(after_restart.complete, "safe retained history stays complete after restart");
 		assert_eq!(
-			value(&after_restart.data.totals, "flock_requests_total"),
+			value(&after_restart.data.totals, "hodos_requests_total"),
 			14.0,
 			"restart preserves safe-compaction totals"
 		);
@@ -2395,8 +2395,8 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 		let runtime = history.boot_t;
 		history.append(
 			runtime,
-			"# TYPE flock_requests_total counter\nflock_requests_total{client=\"equivalence\"} 40\n# \
-			 TYPE flock_active_requests gauge\nflock_active_requests{client=\"equivalence\"} 4\n",
+			"# TYPE hodos_requests_total counter\nhodos_requests_total{client=\"equivalence\"} 40\n# \
+			 TYPE hodos_active_requests gauge\nhodos_active_requests{client=\"equivalence\"} 4\n",
 			initial,
 		);
 		assert_eq!(
@@ -2455,8 +2455,8 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 		let runtime = history.boot_t;
 		history.append(
 			runtime,
-			"# TYPE flock_requests_total counter\nflock_requests_total{client=\"equivalence\"} 40\n# \
-			 TYPE flock_active_requests gauge\nflock_active_requests{client=\"equivalence\"} 4\n",
+			"# TYPE hodos_requests_total counter\nhodos_requests_total{client=\"equivalence\"} 40\n# \
+			 TYPE hodos_active_requests gauge\nhodos_active_requests{client=\"equivalence\"} 4\n",
 			initial.clone(),
 		);
 		entered_rx
@@ -2465,8 +2465,8 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 		history.compaction_pending.store(false, Ordering::SeqCst);
 		history.append(
 			runtime,
-			"# TYPE flock_requests_total counter\nflock_requests_total{client=\"equivalence\"} 50\n# \
-			 TYPE flock_active_requests gauge\nflock_active_requests{client=\"equivalence\"} 5\n",
+			"# TYPE hodos_requests_total counter\nhodos_requests_total{client=\"equivalence\"} 50\n# \
+			 TYPE hodos_active_requests gauge\nhodos_active_requests{client=\"equivalence\"} 5\n",
 			initial,
 		);
 		let (diagnostics, recovery_events, revision) = {
@@ -2486,7 +2486,7 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 		);
 		drop(after);
 		assert!(
-			value(&history.rollup(cutoff, runtime, 100).data.totals, "flock_requests_total") >= 10.0,
+			value(&history.rollup(cutoff, runtime, 100).data.totals, "hodos_requests_total") >= 10.0,
 			"the concurrent appended counter delta remains in the rollup"
 		);
 	}
@@ -2572,8 +2572,8 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 		let runtime = history.boot_t;
 		history.append(
 			runtime,
-			"# TYPE flock_requests_total counter\nflock_requests_total{client=\"equivalence\"} 40\n# \
-			 TYPE flock_active_requests gauge\nflock_active_requests{client=\"equivalence\"} 4\n",
+			"# TYPE hodos_requests_total counter\nhodos_requests_total{client=\"equivalence\"} 40\n# \
+			 TYPE hodos_active_requests gauge\nhodos_active_requests{client=\"equivalence\"} 4\n",
 			initial.clone(),
 		);
 		assert_eq!(
@@ -2773,13 +2773,13 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 		vec![
 			codec::StateEntry {
 				kind:   codec::StateKind::Counter,
-				metric: "flock_requests_total".to_owned(),
+				metric: "hodos_requests_total".to_owned(),
 				labels: labels.clone(),
 				value:  counter,
 			},
 			codec::StateEntry {
 				kind: codec::StateKind::Gauge,
-				metric: "flock_active_requests".to_owned(),
+				metric: "hodos_active_requests".to_owned(),
 				labels,
 				value: gauge,
 			},
@@ -2920,8 +2920,8 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 				repeated_rollup.diagnostics, checkpointed_rollup.diagnostics,
 				"physical record diagnostics distinguish samples from checkpoints"
 			);
-			assert_eq!(value(&repeated_rollup.data.totals, "flock_requests_total"), 18.0);
-			assert_eq!(value(&repeated_rollup.data.latest, "flock_active_requests"), 3.0);
+			assert_eq!(value(&repeated_rollup.data.totals, "hodos_requests_total"), 18.0);
+			assert_eq!(value(&repeated_rollup.data.latest, "hodos_active_requests"), 3.0);
 		}
 
 		let coarse = repeated_history.rollup(start, start + 60, 2);
@@ -2937,8 +2937,8 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 		);
 
 		let runtime = unix_now() + 2;
-		let runtime_snapshot = "# TYPE flock_requests_total counter\nflock_requests_total{client=\"equivalence\"} 4\n# \
-			 TYPE flock_active_requests gauge\nflock_active_requests{client=\"equivalence\"} 4\n";
+		let runtime_snapshot = "# TYPE hodos_requests_total counter\nhodos_requests_total{client=\"equivalence\"} 4\n# \
+			 TYPE hodos_active_requests gauge\nhodos_active_requests{client=\"equivalence\"} 4\n";
 		let before_repeated = repeated_history.current(runtime, || runtime_snapshot.to_owned());
 		let before_checkpointed =
 			checkpointed_history.current(runtime, || runtime_snapshot.to_owned());
@@ -3012,7 +3012,7 @@ flock_ttft_seconds_count{model="z-ai/glm-5.2"} 4
 				labels: [("client".to_owned(), "equivalence".to_owned())]
 					.into_iter()
 					.collect(),
-				metric: "flock_requests_total".to_owned(),
+				metric: "hodos_requests_total".to_owned(),
 				value:  5.0,
 			}]);
 		}

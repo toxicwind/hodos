@@ -361,7 +361,7 @@ pub fn load(dir: &Path) -> Result<Option<StoredConfig>, String> {
 		sc = migrate_v1(sc);
 	} else if sc.version > CURRENT_VERSION {
 		return Err(format!(
-			"{} has version {} but this build understands version {CURRENT_VERSION}; upgrade flock",
+			"{} has version {} but this build understands version {CURRENT_VERSION}; upgrade hodos",
 			path.display(),
 			sc.version
 		));
@@ -752,7 +752,7 @@ mod tests {
 		fn new() -> Self {
 			static N: AtomicU32 = AtomicU32::new(0);
 			let dir = std::env::temp_dir().join(format!(
-				"flock-config-test-{}-{}",
+				"hodos-config-test-{}-{}",
 				std::process::id(),
 				N.fetch_add(1, Ordering::SeqCst)
 			));

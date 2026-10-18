@@ -36,7 +36,7 @@ fn no_redirect_client() -> reqwest::Client {
 fn usage_observation_counter_lines(exposition: &str) -> BTreeSet<String> {
 	let rows: Vec<_> = exposition
 		.lines()
-		.filter(|line| line.starts_with("flock_usage_observations_total{"))
+		.filter(|line| line.starts_with("hodos_usage_observations_total{"))
 		.collect();
 	let unique_rows: BTreeSet<_> = rows.iter().copied().collect();
 	assert_eq!(
@@ -46,7 +46,7 @@ fn usage_observation_counter_lines(exposition: &str) -> BTreeSet<String> {
 	);
 	for row in &rows {
 		let (labels, value) = row
-			.strip_prefix("flock_usage_observations_total{")
+			.strip_prefix("hodos_usage_observations_total{")
 			.and_then(|row| row.split_once("} "))
 			.expect("usage observation counter has labels and an integer value");
 		let labels: Vec<_> = labels.split(',').collect();
@@ -1428,7 +1428,7 @@ fn successful_chat_requests(rows: &serde_json::Value) -> f64 {
 		.unwrap()
 		.iter()
 		.filter(|row| {
-			row["metric"] == "flock_requests_total"
+			row["metric"] == "hodos_requests_total"
 				&& row["labels"]["path"] == "/v1/chat/completions"
 				&& row["labels"]["status"] == "200"
 		})
@@ -1520,7 +1520,7 @@ fn canonical_history_row(
 		state: value.map(|value| {
 			vec![CanonicalFixtureState {
 				kind: CanonicalFixtureStateKind::Counter,
-				metric: "flock_seeded_requests_total",
+				metric: "hodos_seeded_requests_total",
 				labels,
 				value,
 			}]
@@ -1604,10 +1604,10 @@ fn idle_metric_snapshot(metrics: &str) -> Vec<&str> {
 	let mut rows: Vec<_> = metrics
 		.lines()
 		.filter(|line| {
-			line.starts_with("flock_requests_total")
-				|| line.starts_with("flock_lane_requests_total")
-				|| line.starts_with("flock_queue_wait_seconds_count")
-				|| line.starts_with("flock_queue_wait_seconds_sum")
+			line.starts_with("hodos_requests_total")
+				|| line.starts_with("hodos_lane_requests_total")
+				|| line.starts_with("hodos_queue_wait_seconds_count")
+				|| line.starts_with("hodos_queue_wait_seconds_sum")
 		})
 		.collect();
 	rows.sort_unstable();
@@ -1853,10 +1853,10 @@ async fn release_restart_and_idle_history() {
 		let before_metrics = idle_metric_snapshot(&before_metrics_text);
 		assert!(
 			[
-				"flock_requests_total",
-				"flock_lane_requests_total",
-				"flock_queue_wait_seconds_count",
-				"flock_queue_wait_seconds_sum",
+				"hodos_requests_total",
+				"hodos_lane_requests_total",
+				"hodos_queue_wait_seconds_count",
+				"hodos_queue_wait_seconds_sum",
 			]
 			.iter()
 			.all(|metric| before_metrics.iter().any(|row| row.starts_with(metric))),
@@ -2143,7 +2143,7 @@ async fn deadline_header_validation_runs_after_auth_and_before_upstream() {
 
 	let unauthorized = client()
 		.post(proxy.url("/v1/chat/completions"))
-		.header("x-flock-deadline-ms", "not-a-number")
+		.header("x-hodos-deadline-ms", "not-a-number")
 		.json(&chat_body("unauthorized", false))
 		.send()
 		.await
@@ -2153,7 +2153,7 @@ async fn deadline_header_validation_runs_after_auth_and_before_upstream() {
 	let malformed = client()
 		.post(proxy.url("/v1/chat/completions"))
 		.bearer_auth("sekrit")
-		.header("x-flock-deadline-ms", "10.0")
+		.header("x-hodos-deadline-ms", "10.0")
 		.json(&chat_body("malformed", false))
 		.send()
 		.await
@@ -2165,8 +2165,8 @@ async fn deadline_header_validation_runs_after_auth_and_before_upstream() {
 	let duplicate = client()
 		.post(proxy.url("/v1/chat/completions"))
 		.bearer_auth("sekrit")
-		.header("x-flock-deadline-ms", "100")
-		.header("x-flock-deadline-ms", "200")
+		.header("x-hodos-deadline-ms", "100")
+		.header("x-hodos-deadline-ms", "200")
 		.json(&chat_body("duplicate", false))
 		.send()
 		.await
@@ -2188,7 +2188,7 @@ async fn deadline_applies_to_models_cache_refresh() {
 	let started = Instant::now();
 	let resp = client()
 		.get(proxy.url("/v1/models"))
-		.header("x-flock-deadline-ms", "100")
+		.header("x-hodos-deadline-ms", "100")
 		.send()
 		.await
 		.unwrap();
@@ -2212,7 +2212,7 @@ async fn buffered_deadline_cancels_header_wait_and_releases_inflight_slot() {
 	let started = Instant::now();
 	let expired = client()
 		.post(proxy.url("/v1/chat/completions"))
-		.header("x-flock-deadline-ms", "150")
+		.header("x-hodos-deadline-ms", "150")
 		.json(&chat_body("deadline", false))
 		.send()
 		.await
@@ -2232,10 +2232,10 @@ async fn buffered_deadline_cancels_header_wait_and_releases_inflight_slot() {
 
 	let metrics = metrics(&proxy).await;
 	assert!(metrics.contains(
-        r#"flock_requests_total{client="local",model="mock/model-a",path="/v1/chat/completions",status="deadline"} 1"#
+        r#"hodos_requests_total{client="local",model="mock/model-a",path="/v1/chat/completions",status="deadline"} 1"#
     ));
 	assert!(metrics.contains(
-        r#"flock_deadline_exceeded_total{client="local",model="mock/model-a",path="/v1/chat/completions"} 1"#
+        r#"hodos_deadline_exceeded_total{client="local",model="mock/model-a",path="/v1/chat/completions"} 1"#
     ));
 }
 
@@ -2253,7 +2253,7 @@ async fn streaming_deadline_stops_retry_wait() {
 	let started = Instant::now();
 	let resp = client()
 		.post(proxy.url("/v1/chat/completions"))
-		.header("x-flock-deadline-ms", "150")
+		.header("x-hodos-deadline-ms", "150")
 		.json(&chat_body("retry-deadline", true))
 		.send()
 		.await
@@ -2276,7 +2276,7 @@ async fn streaming_deadline_stops_an_active_non_idle_stream() {
 	let started = Instant::now();
 	let resp = client()
 		.post(proxy.url("/v1/chat/completions"))
-		.header("x-flock-deadline-ms", "175")
+		.header("x-hodos-deadline-ms", "175")
 		.json(&chat_body("active-deadline", true))
 		.send()
 		.await
@@ -2292,7 +2292,7 @@ async fn streaming_deadline_stops_an_active_non_idle_stream() {
 	{
 		assert!(
 			metrics.contains(&format!(
-				r#"flock_usage_observations_total{{field="{field}",result="unavailable"}} 1"#
+				r#"hodos_usage_observations_total{{field="{field}",result="unavailable"}} 1"#
 			)),
 			"deadline must finalize the no-usage observer once: {metrics}"
 		);
@@ -2309,7 +2309,7 @@ async fn streaming_deadline_finalizes_early_usage_once_without_losing_measuremen
 
 	let response = client()
 		.post(proxy.url("/v1/chat/completions"))
-		.header("x-flock-deadline-ms", "175")
+		.header("x-hodos-deadline-ms", "175")
 		.json(&chat_body("early-usage-deadline", true))
 		.send()
 		.await
@@ -2327,15 +2327,15 @@ async fn streaming_deadline_finalizes_early_usage_once_without_losing_measuremen
 	] {
 		assert!(
 			metrics.contains(&format!(
-				r#"flock_usage_observations_total{{field="{field}",result="{result}"}} 1"#
+				r#"hodos_usage_observations_total{{field="{field}",result="{result}"}} 1"#
 			)),
 			"deadline must retain the early {field} result exactly once: {metrics}"
 		);
 	}
 	assert!(
-		metrics.contains(r#"flock_prompt_tokens_total{client="local",model="mock/model-a"} 7"#)
+		metrics.contains(r#"hodos_prompt_tokens_total{client="local",model="mock/model-a"} 7"#)
 			&& metrics.contains(
-				r#"flock_completion_tokens_total{client="local",model="mock/model-a",source="usage"} 3"#
+				r#"hodos_completion_tokens_total{client="local",model="mock/model-a",source="usage"} 3"#
 			),
 		"measured token counters survive the deadline: {metrics}"
 	);
@@ -2354,7 +2354,7 @@ async fn streaming_deadline_releases_inflight_when_downstream_is_not_reading() {
 
 	let unread = client()
 		.post(proxy.url("/v1/chat/completions"))
-		.header("x-flock-deadline-ms", "75")
+		.header("x-hodos-deadline-ms", "75")
 		.json(&chat_body("unread-deadline", true))
 		.send()
 		.await
@@ -2649,7 +2649,7 @@ async fn observation_preserves_upstream_bytes() {
 		!metrics(&proxy)
 			.await
 			.lines()
-			.any(|line| line.starts_with("flock_reasoning_tokens_total{")),
+			.any(|line| line.starts_with("hodos_reasoning_tokens_total{")),
 		"invalid reasoning must be omitted instead of accepted by the old side-band reader"
 	);
 }
@@ -2759,21 +2759,21 @@ async fn metrics_report_traffic_tokens_and_affinity() {
 	read_sse(resp).await;
 
 	let metrics = metrics(&proxy).await;
-	assert!(metrics.contains(r#"flock_requests_total{"#), "{metrics}");
+	assert!(metrics.contains(r#"hodos_requests_total{"#), "{metrics}");
 	assert!(metrics.contains(r#"client="alice""#));
 	assert!(metrics.contains(r#"model="mock/model-a""#));
 	assert!(
 		metrics.contains(
-			r#"flock_completion_tokens_total{client="alice",model="mock/model-a",source="usage"} 2"#
+			r#"hodos_completion_tokens_total{client="alice",model="mock/model-a",source="usage"} 2"#
 		),
 		"exact usage counted: {metrics}"
 	);
-	assert!(metrics.contains("flock_affinity_total"));
+	assert!(metrics.contains("hodos_affinity_total"));
 }
 
 #[tokio::test]
 async fn dashboard_observation_quality_is_honest() {
-	// Mutation caught: the proxy omits `flock_usage_observations_total`,
+	// Mutation caught: the proxy omits `hodos_usage_observations_total`,
 	// does not record the terminal disconnected-stream result, or exposes a
 	// request/model/client/error label instead of the closed field/result pair.
 	let mock = start_mock().await;
@@ -2874,7 +2874,7 @@ async fn dashboard_observation_quality_is_honest() {
 	loop {
 		let request_rows = metrics(&proxy).await;
 		if request_rows.lines().any(|line| {
-            line == r#"flock_requests_total{client="local",model="mock/model-a",path="/v1/chat/completions",status="disconnect"} 1"#
+            line == r#"hodos_requests_total{client="local",model="mock/model-a",path="/v1/chat/completions",status="disconnect"} 1"#
         }) {
             break;
         }
@@ -2920,49 +2920,49 @@ async fn dashboard_observation_quality_is_honest() {
 	assert_eq!(
 		exposition
 			.lines()
-			.filter(|line| line.starts_with("# HELP flock_usage_observations_total"))
+			.filter(|line| line.starts_with("# HELP hodos_usage_observations_total"))
 			.collect::<Vec<_>>(),
 		vec![
-			"# HELP flock_usage_observations_total Final classified upstream usage observations by field and result."
+			"# HELP hodos_usage_observations_total Final classified upstream usage observations by field and result."
 		],
 		"usage observation HELP contract is exact"
 	);
 	assert_eq!(
 		exposition
 			.lines()
-			.filter(|line| line.starts_with("# TYPE flock_usage_observations_total"))
+			.filter(|line| line.starts_with("# TYPE hodos_usage_observations_total"))
 			.collect::<Vec<_>>(),
-		vec!["# TYPE flock_usage_observations_total counter"],
+		vec!["# TYPE hodos_usage_observations_total counter"],
 		"usage observation TYPE contract is exact"
 	);
 	assert_eq!(
 		usage_observation_counter_lines(&exposition),
 		BTreeSet::from([
-			r#"flock_usage_observations_total{field="prompt_tokens",result="measured"} 2"#.to_owned(),
-			r#"flock_usage_observations_total{field="prompt_tokens",result="unavailable"} 5"#
+			r#"hodos_usage_observations_total{field="prompt_tokens",result="measured"} 2"#.to_owned(),
+			r#"hodos_usage_observations_total{field="prompt_tokens",result="unavailable"} 5"#
 				.to_owned(),
-			r#"flock_usage_observations_total{field="prompt_tokens",result="invalid"} 1"#.to_owned(),
-			r#"flock_usage_observations_total{field="completion_tokens",result="measured"} 2"#
+			r#"hodos_usage_observations_total{field="prompt_tokens",result="invalid"} 1"#.to_owned(),
+			r#"hodos_usage_observations_total{field="completion_tokens",result="measured"} 2"#
 				.to_owned(),
-			r#"flock_usage_observations_total{field="completion_tokens",result="estimated"} 1"#
+			r#"hodos_usage_observations_total{field="completion_tokens",result="estimated"} 1"#
 				.to_owned(),
-			r#"flock_usage_observations_total{field="completion_tokens",result="unavailable"} 4"#
+			r#"hodos_usage_observations_total{field="completion_tokens",result="unavailable"} 4"#
 				.to_owned(),
-			r#"flock_usage_observations_total{field="completion_tokens",result="invalid"} 1"#
+			r#"hodos_usage_observations_total{field="completion_tokens",result="invalid"} 1"#
 				.to_owned(),
-			r#"flock_usage_observations_total{field="total_tokens",result="measured"} 1"#.to_owned(),
-			r#"flock_usage_observations_total{field="total_tokens",result="unavailable"} 6"#
+			r#"hodos_usage_observations_total{field="total_tokens",result="measured"} 1"#.to_owned(),
+			r#"hodos_usage_observations_total{field="total_tokens",result="unavailable"} 6"#
 				.to_owned(),
-			r#"flock_usage_observations_total{field="total_tokens",result="invalid"} 1"#.to_owned(),
-			r#"flock_usage_observations_total{field="cached_tokens",result="measured"} 1"#.to_owned(),
-			r#"flock_usage_observations_total{field="cached_tokens",result="unavailable"} 6"#
+			r#"hodos_usage_observations_total{field="total_tokens",result="invalid"} 1"#.to_owned(),
+			r#"hodos_usage_observations_total{field="cached_tokens",result="measured"} 1"#.to_owned(),
+			r#"hodos_usage_observations_total{field="cached_tokens",result="unavailable"} 6"#
 				.to_owned(),
-			r#"flock_usage_observations_total{field="cached_tokens",result="invalid"} 1"#.to_owned(),
-			r#"flock_usage_observations_total{field="reasoning_tokens",result="measured"} 2"#
+			r#"hodos_usage_observations_total{field="cached_tokens",result="invalid"} 1"#.to_owned(),
+			r#"hodos_usage_observations_total{field="reasoning_tokens",result="measured"} 2"#
 				.to_owned(),
-			r#"flock_usage_observations_total{field="reasoning_tokens",result="unavailable"} 5"#
+			r#"hodos_usage_observations_total{field="reasoning_tokens",result="unavailable"} 5"#
 				.to_owned(),
-			r#"flock_usage_observations_total{field="reasoning_tokens",result="invalid"} 1"#
+			r#"hodos_usage_observations_total{field="reasoning_tokens",result="invalid"} 1"#
 				.to_owned(),
 		]),
 		"every finalized success/disconnect/stall/unterminated path has exactly one of the closed five-field results"
@@ -2982,7 +2982,7 @@ async fn dashboard_observation_quality_is_honest() {
 	assert!(now.get("observation_availability").is_none());
 	assert!(
 		now["metrics"].as_array().unwrap().iter().any(|metric| {
-			metric["metric"] == "flock_usage_observations_total"
+			metric["metric"] == "hodos_usage_observations_total"
 				&& metric["labels"]
 					== serde_json::json!({"field":"completion_tokens","result":"estimated"})
 				&& metric["value"] == 1.0
@@ -3033,14 +3033,14 @@ async fn dashboard_observation_quality_is_honest() {
 	assert_eq!(
 		usage_observation_counter_lines(&metrics(&retry_proxy).await),
 		BTreeSet::from([
-			r#"flock_usage_observations_total{field="prompt_tokens",result="measured"} 1"#.to_owned(),
-			r#"flock_usage_observations_total{field="completion_tokens",result="measured"} 1"#
+			r#"hodos_usage_observations_total{field="prompt_tokens",result="measured"} 1"#.to_owned(),
+			r#"hodos_usage_observations_total{field="completion_tokens",result="measured"} 1"#
 				.to_owned(),
-			r#"flock_usage_observations_total{field="total_tokens",result="unavailable"} 1"#
+			r#"hodos_usage_observations_total{field="total_tokens",result="unavailable"} 1"#
 				.to_owned(),
-			r#"flock_usage_observations_total{field="cached_tokens",result="unavailable"} 1"#
+			r#"hodos_usage_observations_total{field="cached_tokens",result="unavailable"} 1"#
 				.to_owned(),
-			r#"flock_usage_observations_total{field="reasoning_tokens",result="measured"} 1"#
+			r#"hodos_usage_observations_total{field="reasoning_tokens",result="measured"} 1"#
 				.to_owned(),
 		]),
 		"pre-observation retry responses do not add observation counters"
@@ -3091,43 +3091,43 @@ async fn request_shape_and_quality_metrics_are_recorded() {
 
 	// Request shape (labeled by client — open mode admits everyone as "local").
 	assert!(
-		metrics.contains(r#"flock_stream_requests_total{client="local",stream="true"}"#),
+		metrics.contains(r#"hodos_stream_requests_total{client="local",stream="true"}"#),
 		"stream flag counted: {metrics}"
 	);
 	assert!(
-		metrics.contains(r#"flock_request_messages_count{client="local"}"#),
+		metrics.contains(r#"hodos_request_messages_count{client="local"}"#),
 		"conversation depth histogram present"
 	);
 	assert!(
-		metrics.contains(r#"flock_request_tools_count{client="local"}"#),
+		metrics.contains(r#"hodos_request_tools_count{client="local"}"#),
 		"tools-offered histogram present"
 	);
-	assert!(metrics.contains("flock_request_temperature_count"), "temperature histogram present");
-	assert!(metrics.contains("flock_request_max_tokens_count"), "max_tokens histogram present");
-	assert!(metrics.contains(r#"flock_tool_choice_total{mode="auto"}"#), "tool_choice mode counted");
+	assert!(metrics.contains("hodos_request_temperature_count"), "temperature histogram present");
+	assert!(metrics.contains("hodos_request_max_tokens_count"), "max_tokens histogram present");
+	assert!(metrics.contains(r#"hodos_tool_choice_total{mode="auto"}"#), "tool_choice mode counted");
 
 	// Response quality.
 	assert!(
-		metrics.contains(r#"flock_finish_reason_total{model="mock/model-a",reason="stop"}"#),
+		metrics.contains(r#"hodos_finish_reason_total{model="mock/model-a",reason="stop"}"#),
 		"stop finish recorded: {metrics}"
 	);
 	assert!(
-		metrics.contains(r#"flock_finish_reason_total{model="mock/model-a",reason="tool_calls"}"#),
+		metrics.contains(r#"hodos_finish_reason_total{model="mock/model-a",reason="tool_calls"}"#),
 		"tool_calls finish recorded"
 	);
 	assert!(
-		metrics.contains(r#"flock_tool_calls_total{model="mock/model-a"}"#),
+		metrics.contains(r#"hodos_tool_calls_total{model="mock/model-a"}"#),
 		"tool-call volume recorded"
 	);
 	assert!(
-		metrics.contains(r#"flock_reasoning_tokens_total{model="mock/model-a"}"#),
+		metrics.contains(r#"hodos_reasoning_tokens_total{model="mock/model-a"}"#),
 		"reasoning tokens recorded"
 	);
 
 	// Cardinality stays bounded: the stream label is a two-value enum.
 	for line in metrics
 		.lines()
-		.filter(|l| l.starts_with("flock_stream_requests_total{"))
+		.filter(|l| l.starts_with("hodos_stream_requests_total{"))
 	{
 		assert!(
 			line.contains(r#"stream="true""#) || line.contains(r#"stream="false""#),
@@ -3188,30 +3188,30 @@ async fn buffered_quality_and_edge_cases_are_recorded() {
 
 	// Buffered quality extraction (from relay()).
 	assert!(
-		metrics.contains(r#"flock_finish_reason_total{model="mock/model-a",reason="tool_calls"}"#),
+		metrics.contains(r#"hodos_finish_reason_total{model="mock/model-a",reason="tool_calls"}"#),
 		"buffered tool_calls finish recorded: {metrics}"
 	);
 	assert!(
-		metrics.contains(r#"flock_tool_calls_total{model="mock/model-a"}"#),
+		metrics.contains(r#"hodos_tool_calls_total{model="mock/model-a"}"#),
 		"buffered tool-call count recorded"
 	);
 	assert!(
-		metrics.contains(r#"flock_reasoning_tokens_total{model="mock/model-a"}"#),
+		metrics.contains(r#"hodos_reasoning_tokens_total{model="mock/model-a"}"#),
 		"buffered reasoning tokens recorded"
 	);
 	assert!(
-		metrics.contains(r#"flock_upstream_seconds_count{model="mock/model-a"}"#),
+		metrics.contains(r#"hodos_upstream_seconds_count{model="mock/model-a"}"#),
 		"upstream latency recorded on the buffered path"
 	);
 
 	// Edge cases.
 	assert!(
-		metrics.contains(r#"flock_tool_choice_total{mode="required"}"#),
+		metrics.contains(r#"hodos_tool_choice_total{mode="required"}"#),
 		"non-auto tool_choice mode recorded"
 	);
-	assert!(metrics.contains(r#"flock_json_mode_total{client="local"}"#), "JSON mode recorded");
+	assert!(metrics.contains(r#"hodos_json_mode_total{client="local"}"#), "JSON mode recorded");
 	assert!(
-		metrics.contains(r#"flock_finish_reason_total{model="mock/model-a",reason="other"}"#),
+		metrics.contains(r#"hodos_finish_reason_total{model="mock/model-a",reason="other"}"#),
 		"unknown finish_reason collapsed to other: {metrics}"
 	);
 	assert!(
@@ -3323,7 +3323,7 @@ async fn buffered_empty_completion_is_guarded() {
 	let m = metrics(&proxy).await;
 	assert!(
 		m.lines()
-			.any(|l| l.starts_with("flock_model_empty_strikes{")),
+			.any(|l| l.starts_with("hodos_model_empty_strikes{")),
 		"empty strikes are exported"
 	);
 }
@@ -3437,7 +3437,7 @@ async fn upstream_connection_error_enters_cooldown() {
 
 	let metrics = metrics(&proxy).await;
 	assert!(
-		metrics.contains(r#"flock_lane_cooldown_total{lane="0",status="connect"}"#),
+		metrics.contains(r#"hodos_lane_cooldown_total{lane="0",status="connect"}"#),
 		"connection error put the lane in cooldown: {metrics}"
 	);
 }
@@ -3562,7 +3562,7 @@ async fn dashboard_history_reports_completeness() {
 			timestamp,
 			boot_id,
 			&format!(
-				",\"state\":[{{\"kind\":\"counter\",\"metric\":\"flock_requests_total\",\"labels\":{{\"client\":\"synthetic-client\"}},\"value\":{value}}}]"
+				",\"state\":[{{\"kind\":\"counter\",\"metric\":\"hodos_requests_total\",\"labels\":{{\"client\":\"synthetic-client\"}},\"value\":{value}}}]"
 			),
 		)
 	};
@@ -3678,7 +3678,7 @@ async fn dashboard_history_reports_completeness() {
 		.unwrap()
 		.iter()
 		.find(|value| {
-			value["metric"] == "flock_requests_total"
+			value["metric"] == "hodos_requests_total"
 				&& value["labels"]["client"] == "synthetic-client"
 		})
 		.and_then(|value| value["value"].as_f64());
@@ -3740,9 +3740,9 @@ async fn experimental_legacy_history_is_ignored_without_mutation() {
 	std::fs::write(
         data_dir.join("history.jsonl"),
         format!(
-            "{{\"t\":{},\"m\":\"# TYPE flock_requests_total counter\\nflock_requests_total{{client=\\\"local\\\",model=\\\"mock/model-a\\\",path=\\\"/v1/chat/completions\\\",status=\\\"200\\\"}} 10\\n\"}}\n\
-             {{\"t\":{},\"m\":\"# TYPE flock_requests_total counter\\nflock_requests_total{{client=\\\"local\\\",model=\\\"mock/model-a\\\",path=\\\"/v1/chat/completions\\\",status=\\\"200\\\"}} 15\\n\"}}\n\
-             {{\"t\":{},\"m\":\"# TYPE flock_requests_total counter\\nflock_requests_total{{client=\\\"local\\\",model=\\\"mock/model-a\\\",path=\\\"/v1/chat/completions\\\",status=\\\"200\\\"}} 4\\n\"}}\n",
+            "{{\"t\":{},\"m\":\"# TYPE hodos_requests_total counter\\nhodos_requests_total{{client=\\\"local\\\",model=\\\"mock/model-a\\\",path=\\\"/v1/chat/completions\\\",status=\\\"200\\\"}} 10\\n\"}}\n\
+             {{\"t\":{},\"m\":\"# TYPE hodos_requests_total counter\\nhodos_requests_total{{client=\\\"local\\\",model=\\\"mock/model-a\\\",path=\\\"/v1/chat/completions\\\",status=\\\"200\\\"}} 15\\n\"}}\n\
+             {{\"t\":{},\"m\":\"# TYPE hodos_requests_total counter\\nhodos_requests_total{{client=\\\"local\\\",model=\\\"mock/model-a\\\",path=\\\"/v1/chat/completions\\\",status=\\\"200\\\"}} 4\\n\"}}\n",
             now - 3,
             now - 2,
             now - 1,
@@ -4014,7 +4014,7 @@ async fn dashboard_and_config_are_served_to_authenticated_users() {
 		.unwrap();
 	assert_eq!(dash.status(), 200);
 	let html = dash.text().await.unwrap();
-	assert!(html.contains("Flock"));
+	assert!(html.contains("Hodos"));
 	assert!(html.contains("data-range=\"default\""));
 	assert!(html.contains("data-range=\"all-retained\""));
 	let dashboard_js = client()
@@ -4153,7 +4153,7 @@ async fn dashboard_pause_traffic_is_derived_from_rendered_samples() {
 		.unwrap();
 	let scripts = shared_js + &dashboard_js;
 	assert!(scripts.contains("function hasSelectedRequestTraffic(selectedSamples)"));
-	assert!(scripts.contains("row => row.name === 'flock_requests_total' && +row.value > 0"));
+	assert!(scripts.contains("row => row.name === 'hodos_requests_total' && +row.value > 0"));
 	assert!(scripts.contains("frozenHasTraffic = hasSelectedRequestTraffic(samples);"));
 	assert!(scripts.contains(
 		"const hasTraffic = mode.paused ? frozenHasTraffic : hasSelectedRequestTraffic(samples);"
@@ -4377,7 +4377,7 @@ async fn history_startup_degrades_to_memory_without_mutating_canonical() {
 		metrics(&canonical_proxy)
 			.await
 			.lines()
-			.any(|line| line == "flock_history_persistence_degraded 0"),
+			.any(|line| line == "hodos_history_persistence_degraded 0"),
 		"history-startup:canonical: canonical persistence gauge is zero"
 	);
 	canonical_proxy.terminate();
@@ -4410,7 +4410,7 @@ async fn history_startup_degrades_to_memory_without_mutating_canonical() {
             metrics(&proxy)
                 .await
                 .lines()
-                .any(|line| line == "flock_history_persistence_degraded 1"),
+                .any(|line| line == "hodos_history_persistence_degraded 1"),
             "history-startup:{name}: rejected canonical persistence gauge is one"
         );
         let response = client()
@@ -4453,12 +4453,12 @@ async fn legacy_history_is_warned_once_without_parsing_or_mutating_it() {
 		.local_addr()
 		.unwrap()
 		.port();
-	let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_flock"))
+	let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_hodos"))
 		.env_clear()
 		.current_dir(std::env::temp_dir())
 		.env("PORT", port.to_string())
 		.env("DATA_DIR", &data_dir)
-		.env("RUST_LOG", "flock=warn")
+		.env("RUST_LOG", "hodos=warn")
 		.stdout(std::process::Stdio::piped())
 		.stderr(std::process::Stdio::piped())
 		.spawn()
@@ -4507,12 +4507,12 @@ async fn stale_canonical_temporaries_are_counted_once_without_inspection_or_dele
 		.local_addr()
 		.unwrap()
 		.port();
-	let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_flock"))
+	let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_hodos"))
 		.env_clear()
 		.current_dir(std::env::temp_dir())
 		.env("PORT", port.to_string())
 		.env("DATA_DIR", &data_dir)
-		.env("RUST_LOG", "flock=warn")
+		.env("RUST_LOG", "hodos=warn")
 		.stdout(std::process::Stdio::piped())
 		.stderr(std::process::Stdio::piped())
 		.spawn()
@@ -5183,7 +5183,7 @@ async fn operator_surface_always_requires_auth() {
 		.unwrap();
 	assert_eq!(good.status(), 303);
 	let cookie = good.headers()["set-cookie"].to_str().unwrap().to_owned();
-	assert!(cookie.contains("flock_session="));
+	assert!(cookie.contains("hodos_session="));
 	assert!(cookie.contains("HttpOnly"));
 	assert!(cookie.contains("SameSite=Strict"));
 
@@ -5197,7 +5197,7 @@ async fn operator_surface_always_requires_auth() {
 		.await
 		.unwrap();
 	assert_eq!(dash.status(), 200);
-	assert!(dash.text().await.unwrap().contains("Flock"));
+	assert!(dash.text().await.unwrap().contains("Hodos"));
 }
 
 #[tokio::test]
@@ -5228,7 +5228,7 @@ async fn model_label_is_sanitized_in_metrics() {
 	// harmless alphanumeric token on a single line.
 	let req_line = metrics
 		.lines()
-		.find(|l| l.starts_with("flock_requests_total"))
+		.find(|l| l.starts_with("hodos_requests_total"))
 		.expect("requests_total present");
 	let value = req_line
 		.split("model=\"")
@@ -5612,7 +5612,7 @@ async fn locale_catalog_routes_are_gated() {
 					let messages = catalog["messages"].as_object().expect("plain messages");
 					assert_eq!(
 						messages.get("common.app_name"),
-						Some(&serde_json::Value::String("Flock".into()))
+						Some(&serde_json::Value::String("Hodos".into()))
 					);
 					assert!(
 						messages.values().all(serde_json::Value::is_string),
@@ -5651,19 +5651,19 @@ async fn worker_exhaustion_governs_the_model_and_spares_the_lane() {
 
 	let metrics = metrics(&proxy).await;
 	assert!(
-		metrics.contains(r#"flock_worker_exhausted_total{model="mock/model-a"} 1"#),
+		metrics.contains(r#"hodos_worker_exhausted_total{model="mock/model-a"} 1"#),
 		"exhaustion counted: {metrics}"
 	);
 	assert!(
-		!metrics.contains("flock_lane_cooldown_total"),
+		!metrics.contains("hodos_lane_cooldown_total"),
 		"worker exhaustion must never cool down a lane: {metrics}"
 	);
 	assert!(
-		metrics.contains(r#"flock_model_limit{model="mock/model-a"} 1"#),
+		metrics.contains(r#"hodos_model_limit{model="mock/model-a"} 1"#),
 		"governor engaged at max(1, inflight/2) = 1: {metrics}"
 	);
 	assert!(
-		metrics.contains(r#"flock_model_inflight{model="mock/model-a"} 0"#),
+		metrics.contains(r#"hodos_model_inflight{model="mock/model-a"} 0"#),
 		"permit released after completion: {metrics}"
 	);
 }
@@ -5688,11 +5688,11 @@ async fn worker_exhaustion_streaming_retries_inside_the_stream() {
 
 	let metrics = metrics(&proxy).await;
 	assert!(
-		metrics.contains(r#"flock_worker_exhausted_total{model="mock/model-a"} 1"#),
+		metrics.contains(r#"hodos_worker_exhausted_total{model="mock/model-a"} 1"#),
 		"exhaustion counted: {metrics}"
 	);
 	assert!(
-		!metrics.contains("flock_lane_cooldown_total"),
+		!metrics.contains("hodos_lane_cooldown_total"),
 		"worker exhaustion must never cool down a lane: {metrics}"
 	);
 }
@@ -6615,7 +6615,7 @@ async fn shared_observability_is_identical_across_roles_while_config_stays_scope
 	let user_now = dashboard_now(&proxy, &user).await;
 	let named_client = |payload: &serde_json::Value| {
 		payload["metrics"].as_array().unwrap().iter().any(|metric| {
-			metric["metric"] == "flock_requests_total"
+			metric["metric"] == "hodos_requests_total"
 				&& metric["labels"]["client"] == "shared-admin-client"
 				&& metric["labels"]["path"] == "/v1/chat/completions"
 				&& metric["labels"]["status"] == "200"
@@ -6637,7 +6637,7 @@ async fn shared_observability_is_identical_across_roles_while_config_stays_scope
 			.unwrap()
 			.iter()
 			.any(|metric| {
-				metric["metric"] == "flock_requests_total"
+				metric["metric"] == "hodos_requests_total"
 					&& metric["labels"]["client"] == "shared-admin-client"
 					&& metric["labels"]["path"] == "/v1/chat/completions"
 					&& metric["labels"]["status"] == "200"
@@ -8188,7 +8188,7 @@ async fn logout_clears_the_session_cookie() {
 	assert_eq!(r.status(), 303);
 	assert_eq!(r.headers()["location"], "/login");
 	let set = r.headers()["set-cookie"].to_str().unwrap();
-	assert!(set.contains("flock_session="), "{set}");
+	assert!(set.contains("hodos_session="), "{set}");
 	assert!(set.contains("Max-Age=0"), "{set}");
 }
 
@@ -8227,7 +8227,7 @@ async fn health_probe_flag_reports_liveness() {
 	let mock = start_mock().await;
 	let proxy = start_proxy(&mock.url, &[]).await;
 	let run_health = |port: String| {
-		let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_flock"));
+		let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_hodos"));
 		cmd.arg("--health").env("PORT", port);
 		// Forward the coverage profile path so the probe subprocess is counted
 		// under `cargo llvm-cov` (a no-op in a normal test run).

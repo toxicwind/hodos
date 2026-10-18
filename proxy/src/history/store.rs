@@ -1092,7 +1092,7 @@ mod tests {
 	fn state(value: f64) -> Vec<StateEntry> {
 		vec![StateEntry {
 			kind: StateKind::Counter,
-			metric: "flock_requests_total".into(),
+			metric: "hodos_requests_total".into(),
 			labels: Default::default(),
 			value,
 		}]
@@ -1110,7 +1110,7 @@ mod tests {
 	fn test_dir(label: &str) -> std::path::PathBuf {
 		static SERIAL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 		let dir = std::env::temp_dir().join(format!(
-			"flock-history-store-{label}-{}-{}",
+			"hodos-history-store-{label}-{}-{}",
 			std::process::id(),
 			SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 		));
@@ -1131,13 +1131,13 @@ mod tests {
 
 	fn sample(timestamp: u64, boot_id: &str, value: f64) -> String {
 		format!(
-			r#"{{"format":"nimproxy-history","v":1,"kind":"sample","timestamp":{timestamp},"boot_id":"{boot_id}","capacity":{{"capacity_rpm":80,"enabled_keys":2,"key_rpms":[40,40]}},"state":[{{"kind":"counter","metric":"flock_requests_total","labels":{{"client":"synthetic-client"}},"value":{value}}}]}}"#
+			r#"{{"format":"nimproxy-history","v":1,"kind":"sample","timestamp":{timestamp},"boot_id":"{boot_id}","capacity":{{"capacity_rpm":80,"enabled_keys":2,"key_rpms":[40,40]}},"state":[{{"kind":"counter","metric":"hodos_requests_total","labels":{{"client":"synthetic-client"}},"value":{value}}}]}}"#
 		) + "\n"
 	}
 
 	fn sample_with_gauge(timestamp: u64, boot_id: &str, counter: f64, gauge: f64) -> String {
 		format!(
-			r#"{{"format":"nimproxy-history","v":1,"kind":"sample","timestamp":{timestamp},"boot_id":"{boot_id}","capacity":{{"capacity_rpm":80,"enabled_keys":2,"key_rpms":[40,40]}},"state":[{{"kind":"counter","metric":"flock_requests_total","labels":{{"client":"synthetic-client"}},"value":{counter}}},{{"kind":"gauge","metric":"flock_active_requests","labels":{{"client":"synthetic-client"}},"value":{gauge}}}]}}"#
+			r#"{{"format":"nimproxy-history","v":1,"kind":"sample","timestamp":{timestamp},"boot_id":"{boot_id}","capacity":{{"capacity_rpm":80,"enabled_keys":2,"key_rpms":[40,40]}},"state":[{{"kind":"counter","metric":"hodos_requests_total","labels":{{"client":"synthetic-client"}},"value":{counter}}},{{"kind":"gauge","metric":"hodos_active_requests","labels":{{"client":"synthetic-client"}},"value":{gauge}}}]}}"#
 		) + "\n"
 	}
 
@@ -1178,11 +1178,11 @@ mod tests {
 			.as_secs();
 		let t = now.saturating_sub(100);
 		let invalid_state = format!(
-			r#"{{"format":"nimproxy-history","v":1,"kind":"sample","timestamp":{},"boot_id":"boot-a","capacity":{{"capacity_rpm":80,"enabled_keys":2,"key_rpms":[40,40]}},"state":[{{"kind":"unknown","metric":"flock_requests_total","labels":{{"client":"synthetic-client"}},"value":1.0}}]}}"#,
+			r#"{{"format":"nimproxy-history","v":1,"kind":"sample","timestamp":{},"boot_id":"boot-a","capacity":{{"capacity_rpm":80,"enabled_keys":2,"key_rpms":[40,40]}},"state":[{{"kind":"unknown","metric":"hodos_requests_total","labels":{{"client":"synthetic-client"}},"value":1.0}}]}}"#,
 			t + 2
 		) + "\n";
 		let duplicate_series = format!(
-			r#"{{"format":"nimproxy-history","v":1,"kind":"sample","timestamp":{},"boot_id":"boot-a","capacity":{{"capacity_rpm":80,"enabled_keys":2,"key_rpms":[40,40]}},"state":[{{"kind":"counter","metric":"flock_requests_total","labels":{{"client":"synthetic-client"}},"value":1.0}},{{"kind":"counter","metric":"flock_requests_total","labels":{{"client":"synthetic-client"}},"value":2.0}}]}}"#,
+			r#"{{"format":"nimproxy-history","v":1,"kind":"sample","timestamp":{},"boot_id":"boot-a","capacity":{{"capacity_rpm":80,"enabled_keys":2,"key_rpms":[40,40]}},"state":[{{"kind":"counter","metric":"hodos_requests_total","labels":{{"client":"synthetic-client"}},"value":1.0}},{{"kind":"counter","metric":"hodos_requests_total","labels":{{"client":"synthetic-client"}},"value":2.0}}]}}"#,
 			t + 2
 		) + "\n";
 		let unknown_kind = format!(
@@ -1493,33 +1493,33 @@ mod tests {
 			assert_eq!(actual_complete, complete, "{name}: query completeness");
 			assert_eq!(data.points.len(), point_count, "{name}: included points");
 			let expected_totals = if total != 0.0 {
-				vec![metric_value("flock_requests_total", total)]
+				vec![metric_value("hodos_requests_total", total)]
 			} else {
 				Vec::new()
 			};
 			assert_eq!(data.totals, expected_totals, "{name}: exact totals");
 			let expected_latest = if name == "valid-checkpoint-carries-state-within-usable-epoch" {
-				vec![metric_value("flock_active_requests", 9.0)]
+				vec![metric_value("hodos_active_requests", 9.0)]
 			} else {
 				Vec::new()
 			};
 			assert_eq!(data.latest, expected_latest, "{name}: exact latest values");
 			let expected_point_values: Vec<Vec<MetricValue>> = match name {
 				"corruption-before-first-boot" => {
-					vec![vec![metric_value("flock_requests_total", 1.0)]]
+					vec![vec![metric_value("hodos_requests_total", 1.0)]]
 				},
 				"equal-timestamps-are-valid" => {
-					vec![vec![metric_value("flock_requests_total", 5.0)]]
+					vec![vec![metric_value("hodos_requests_total", 5.0)]]
 				},
 				"valid-checkpoint-carries-state-within-usable-epoch" => vec![vec![
-					metric_value("flock_active_requests", 9.0),
-					metric_value("flock_requests_total", 5.0),
+					metric_value("hodos_active_requests", 9.0),
+					metric_value("hodos_requests_total", 5.0),
 				]],
 				"new-boot-and-full-sample-reestablish-usable-epoch" => {
-					vec![vec![metric_value("flock_requests_total", 7.0)]]
+					vec![vec![metric_value("hodos_requests_total", 7.0)]]
 				},
 				"multiple-damaged-epochs" => {
-					vec![vec![metric_value("flock_requests_total", 4.0)]]
+					vec![vec![metric_value("hodos_requests_total", 4.0)]]
 				},
 				_ => Vec::new(),
 			};
@@ -1606,14 +1606,14 @@ mod tests {
 				assert!(usable_complete, "later usable epoch is query-complete");
 				assert_eq!(
 					usable.totals,
-					vec![metric_value("flock_requests_total", 7.0)],
+					vec![metric_value("hodos_requests_total", 7.0)],
 					"usable epoch exact total"
 				);
 				assert!(usable.latest.is_empty(), "usable epoch has no gauge");
 				assert_eq!(usable.points.len(), 1, "usable epoch exact point count");
 				assert_eq!(
 					usable.points[0].values,
-					vec![metric_value("flock_requests_total", 7.0)],
+					vec![metric_value("hodos_requests_total", 7.0)],
 					"usable epoch exact point payload"
 				);
 				assert_eq!(
@@ -1675,7 +1675,7 @@ mod tests {
 		// This catches a missing safe-publication boundary, including an
 		// accidental fallback to the legacy history.jsonl path.
 		let dir =
-			std::env::temp_dir().join(format!("flock-history-store-red-{}", std::process::id()));
+			std::env::temp_dir().join(format!("hodos-history-store-red-{}", std::process::id()));
 		let _ = fs::remove_dir_all(&dir);
 		fs::create_dir_all(&dir).unwrap();
 
@@ -1706,7 +1706,7 @@ mod tests {
 	#[test]
 	fn corrupt_canonical_history_recovers_by_appending_a_fresh_boot() {
 		let dir = std::env::temp_dir()
-			.join(format!("flock-history-store-red-invalid-{}", std::process::id()));
+			.join(format!("hodos-history-store-red-invalid-{}", std::process::id()));
 		let _ = fs::remove_dir_all(&dir);
 		fs::create_dir_all(&dir).unwrap();
 		let path = dir.join("history-v1.jsonl");
@@ -1934,7 +1934,7 @@ mod tests {
 		.unwrap();
 		let history = Arc::new(History::open(dir.clone(), 0, history_capacity()).unwrap());
 		let sample_t = now + 2;
-		history.append(sample_t, "flock_requests_total 1\n", history_capacity());
+		history.append(sample_t, "hodos_requests_total 1\n", history_capacity());
 
 		assert!(history.rollup(sample_t - 1, sample_t, 1000).complete);
 		let _ = fs::remove_dir_all(dir);
@@ -1949,8 +1949,8 @@ mod tests {
 		let dir = test_dir("runtime-query-end-diagnostics");
 		let history = Arc::new(History::open(dir.clone(), 0, history_capacity()).unwrap());
 		let first_t = now + 2;
-		history.append(first_t, "flock_requests_total 1\n", history_capacity());
-		history.append(first_t + 1, "flock_requests_total 2\n", history_capacity());
+		history.append(first_t, "hodos_requests_total 1\n", history_capacity());
+		history.append(first_t + 1, "hodos_requests_total 2\n", history_capacity());
 
 		let before_second = history.rollup(first_t - 1, first_t, 1000).diagnostics;
 		assert_eq!(before_second.valid_samples, 1);
@@ -2003,7 +2003,7 @@ mod tests {
 			.as_secs();
 		let t = now.saturating_sub(200);
 		let invalid_state = format!(
-			r#"{{"format":"nimproxy-history","v":1,"kind":"sample","timestamp":{},"boot_id":"boot-a","capacity":{{"capacity_rpm":80,"enabled_keys":2,"key_rpms":[40,40]}},"state":[{{"kind":"unknown","metric":"flock_requests_total","labels":{{}},"value":1.0}}]}}"#,
+			r#"{{"format":"nimproxy-history","v":1,"kind":"sample","timestamp":{},"boot_id":"boot-a","capacity":{{"capacity_rpm":80,"enabled_keys":2,"key_rpms":[40,40]}},"state":[{{"kind":"unknown","metric":"hodos_requests_total","labels":{{}},"value":1.0}}]}}"#,
 			t + 100
 		);
 		let dir = test_dir("rejected-high-timestamp-recovery");
@@ -2025,7 +2025,7 @@ mod tests {
 		let early = history.rollup(t, t + 21, 1000);
 		assert!(early.data.points.is_empty());
 		let recovered = history.rollup(t, t + 101, 1000);
-		assert_eq!(recovered.data.totals, vec![metric_value("flock_requests_total", 7.0)]);
+		assert_eq!(recovered.data.totals, vec![metric_value("hodos_requests_total", 7.0)]);
 		let _ = fs::remove_dir_all(dir);
 	}
 
@@ -2357,7 +2357,7 @@ mod tests {
 			baseline.state,
 			vec![StateEntry {
 				kind:   StateKind::Counter,
-				metric: "flock_requests_total".into(),
+				metric: "hodos_requests_total".into(),
 				labels: [("client".to_owned(), "synthetic-client".to_owned())]
 					.into_iter()
 					.collect(),
@@ -2702,7 +2702,7 @@ mod tests {
 		let history = History::open(dir.clone(), 0, history_capacity()).unwrap();
 		assert_eq!(
 			history.rollup(12, 13, 1000).data.totals,
-			vec![metric_value("flock_requests_total", 1.0)],
+			vec![metric_value("hodos_requests_total", 1.0)],
 			"the pre-window full-sample baseline still normalizes the compacted sample"
 		);
 		let _ = fs::remove_dir_all(dir);

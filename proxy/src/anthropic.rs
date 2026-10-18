@@ -1,7 +1,7 @@
 //! Anthropic Messages API surface (`/v1/messages`) — Claude Code compatibility.
 //!
 //! Claude Code speaks the Anthropic wire protocol (`x-api-key`, `/v1/messages`,
-//! content blocks, `stop_reason`, its own SSE event grammar). Flock's upstreams
+//! content blocks, `stop_reason`, its own SSE event grammar). Hodos's upstreams
 //! speak OpenAI chat completions. This module translates between the two and
 //! delegates the actual request to the standard proxy path, so every Anthropic
 //! request gets the same pacing, key-pool rotation, governor, circuit, and
@@ -33,11 +33,11 @@ use crate::AppState;
 
 /// Model requested when the client asks for a `claude-*` id (or omits the
 /// model): the strongest verified NIM model, overridable per deployment via
-/// `FLOCK_ANTHROPIC_DEFAULT_MODEL`.
+/// `HODOS_ANTHROPIC_DEFAULT_MODEL`.
 const DEFAULT_ANTHROPIC_MODEL: &str = "nvidia/nemotron-3.5-super-vl-120b-a12b";
 
 fn default_model() -> String {
-	std::env::var("FLOCK_ANTHROPIC_DEFAULT_MODEL")
+	std::env::var("HODOS_ANTHROPIC_DEFAULT_MODEL")
 		.ok()
 		.filter(|m| !m.trim().is_empty())
 		.unwrap_or_else(|| DEFAULT_ANTHROPIC_MODEL.to_owned())
@@ -323,7 +323,7 @@ pub fn translate_response(openai: &Value, requested_model: &str) -> Value {
 	let message = choice.get("message").cloned().unwrap_or(json!({}));
 	let usage = openai.get("usage").cloned().unwrap_or(json!({}));
 	json!({
-		 "id": openai.get("id").cloned().unwrap_or(json!("msg_flock")),
+		 "id": openai.get("id").cloned().unwrap_or(json!("msg_hodos")),
 		 "type": "message",
 		 "role": "assistant",
 		 "model": requested_model,
@@ -391,7 +391,7 @@ impl SseTranslator {
 				&json!({
 					 "type": "message_start",
 					 "message": {
-						  "id": v.get("id").cloned().unwrap_or(json!("msg_flock")),
+						  "id": v.get("id").cloned().unwrap_or(json!("msg_hodos")),
 						  "type": "message",
 						  "role": "assistant",
 						  "model": self.requested_model,

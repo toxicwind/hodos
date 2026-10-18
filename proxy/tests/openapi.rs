@@ -30,7 +30,7 @@ fn spec_path() -> PathBuf {
 
 #[test]
 fn committed_spec_matches_the_code() {
-	let generated = flock::openapi_json();
+	let generated = hodos::openapi_json();
 	let path = spec_path();
 
 	if std::env::var_os("UPDATE_OPENAPI").is_some() {
@@ -56,7 +56,7 @@ fn committed_spec_matches_the_code() {
 #[test]
 fn spec_is_usable() {
 	let spec: serde_json::Value =
-		serde_json::from_str(&flock::openapi_json()).expect("the spec is JSON");
+		serde_json::from_str(&hodos::openapi_json()).expect("the spec is JSON");
 
 	assert_eq!(spec["openapi"], "3.1.0");
 	assert_eq!(spec["info"]["version"], env!("CARGO_PKG_VERSION"));
@@ -141,7 +141,7 @@ fn spec_is_usable() {
 		.expect("securitySchemes");
 	assert_eq!(security["session_cookie"]["type"], "apiKey");
 	assert_eq!(security["session_cookie"]["in"], "cookie");
-	assert_eq!(security["session_cookie"]["name"], "flock_session");
+	assert_eq!(security["session_cookie"]["name"], "hodos_session");
 	assert_eq!(security["basic_auth"]["type"], "http");
 	assert_eq!(security["basic_auth"]["scheme"], "basic");
 }
@@ -149,7 +149,7 @@ fn spec_is_usable() {
 #[test]
 fn locale_bootstrap_schema_is_typed() {
 	let spec: serde_json::Value =
-		serde_json::from_str(&flock::openapi_json()).expect("the spec is JSON");
+		serde_json::from_str(&hodos::openapi_json()).expect("the spec is JSON");
 	assert_eq!(
 		spec["paths"]["/api/locale-bootstrap"]["get"]["responses"]["200"]["content"]["application/json"]
 			["schema"]["$ref"],
@@ -167,7 +167,7 @@ fn locale_bootstrap_schema_is_typed() {
 #[test]
 fn server_settings_openapi_is_one_complete_request() {
 	let spec: serde_json::Value =
-		serde_json::from_str(&flock::openapi_json()).expect("the spec is JSON");
+		serde_json::from_str(&hodos::openapi_json()).expect("the spec is JSON");
 	let operation = &spec["paths"]["/api/settings/server"]["post"];
 	assert!(operation.is_object(), "server-openapi: missing combined save");
 	assert!(
@@ -248,7 +248,7 @@ fn nullable_string(schema: &serde_json::Value) -> bool {
 #[test]
 fn locale_server_default_openapi_is_typed() {
 	let spec: serde_json::Value =
-		serde_json::from_str(&flock::openapi_json()).expect("the spec is JSON");
+		serde_json::from_str(&hodos::openapi_json()).expect("the spec is JSON");
 	let operation = &spec["paths"]["/api/settings/locale"]["post"];
 	assert!(operation.is_object(), "locale-openapi: missing POST /api/settings/locale");
 	assert!(
@@ -281,7 +281,7 @@ fn locale_server_default_openapi_is_typed() {
 #[test]
 fn locale_account_openapi_preserves_password_and_adds_preference_actions() {
 	let spec: serde_json::Value =
-		serde_json::from_str(&flock::openapi_json()).expect("the spec is JSON");
+		serde_json::from_str(&hodos::openapi_json()).expect("the spec is JSON");
 	let operation = &spec["paths"]["/api/settings/account"]["post"];
 	let summary = operation["summary"].as_str().unwrap_or_default();
 	assert!(
@@ -346,7 +346,7 @@ fn locale_account_openapi_preserves_password_and_adds_preference_actions() {
 #[test]
 fn locale_config_response_openapi_fields_are_typed_and_ascii_positioned() {
 	let spec: serde_json::Value =
-		serde_json::from_str(&flock::openapi_json()).expect("the spec is JSON");
+		serde_json::from_str(&hodos::openapi_json()).expect("the spec is JSON");
 	let config = &spec["components"]["schemas"]["ConfigResponse"];
 	assert_eq!(
 		config["required"],
@@ -378,7 +378,7 @@ fn locale_config_response_openapi_fields_are_typed_and_ascii_positioned() {
 #[should_panic(expected = "route-contract:openapi-security")]
 fn global_security_self_test_names_wrong_requirement() {
 	let mut spec: serde_json::Value =
-		serde_json::from_str(&flock::openapi_json()).expect("generated OpenAPI");
+		serde_json::from_str(&hodos::openapi_json()).expect("generated OpenAPI");
 	spec["security"] = serde_json::json!([{"wrong_scheme": []}]);
 	assert_global_security(&spec);
 }

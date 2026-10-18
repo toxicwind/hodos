@@ -8,7 +8,7 @@
 //! only ever sends the original prompt and gets answers back.
 //!
 //! Decomposition and execution are fully native: the decomposer LLM call
-//! runs through flock's own `router.execute_buffered` (the `auto` strategy
+//! runs through hodos's own `router.execute_buffered` (the `auto` strategy
 //! over the live provider pool), and autonomous fan-out executes each body
 //! through the same internal dispatch in parallel. No upstream, no second
 //! proxy. Request chunking, deterministic fallbacks, response sanitizing,
@@ -235,7 +235,7 @@ pub fn chunked_request_bodies(job: &str, max_requests: usize) -> Vec<Value> {
 /// so a rogue decomposer cannot burn the pool or 400 downstream.
 ///
 /// `allow_ids` is the live free-pool `provider/model` list. It is `None` in
-/// flock today because the live free-pool catalog still belongs to the
+/// hodos today because the live free-pool catalog still belongs to the
 /// estate-scripts router (Worker D's routing-intelligence port); with `None`
 /// the model field passes through untouched and only the sampling clamps apply.
 /// NOTE (Worker D): `resolveSigmaAlias` (TS sigma-catalog alias resolution)
@@ -289,7 +289,7 @@ pub fn sanitize_requests(
 		.collect()
 }
 
-/// Native decomposition: run the decomposer LLM through flock's own
+/// Native decomposition: run the decomposer LLM through hodos's own
 /// `router.execute_buffered` (the `auto` strategy over the live provider
 /// pool). Mirrors TS `buildBodybuilderRequests` LLM path: system prompt with
 /// the live free-pool allow-list, `temperature: 0.3`, parse
@@ -403,7 +403,7 @@ fn result_text_from_body(body: &[u8]) -> String {
 		.unwrap_or_default()
 }
 
-/// Execute one decomposed body through flock's internal dispatch.
+/// Execute one decomposed body through hodos's internal dispatch.
 /// Mirrors TS `dispatchBodybuilderBody`: honor the pinned `provider/model`,
 /// non-streaming, full race failover via the router.
 async fn dispatch_body_native(
@@ -482,7 +482,7 @@ async fn dispatch_body_native(
 /// Router-max first: a job larger than the decomposer's safe context is
 /// chunked deterministically (one context-fitted request per chunk) rather
 /// than handed to the decomposer LLM. Otherwise the decomposer LLM runs
-/// through flock's own router (`auto` strategy over the live free-tier pool),
+/// through hodos's own router (`auto` strategy over the live free-tier pool),
 /// and its output is sanitized natively. If decomposition fails or returns
 /// no requests, fall back to the deterministic fan-out.
 pub async fn build_bodybuilder_requests(
@@ -530,7 +530,7 @@ fn deterministic_fanout(job: &str, max_requests: usize) -> Vec<Value> {
 
 /// Port of `runBodybuilderAutonomous`: the whole bodybuilder workflow with no
 /// human in the loop — build the request bodies and execute each one through
-/// flock's internal dispatch in parallel, returning
+/// hodos's internal dispatch in parallel, returning
 /// `{requests:[...], results:[...]}` where each result carries
 /// `{model, ok, text?, error?, latency_ms?, routed_via?}`.
 ///

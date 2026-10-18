@@ -4,5 +4,5 @@
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    flock::fuzz_config::config_roundtrip(data);
+    hodos::fuzz_config::config_roundtrip(data);
 });

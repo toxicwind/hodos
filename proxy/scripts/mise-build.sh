@@ -7,4 +7,4 @@ BUILD_CMD=$(cat <<'BUILD'
 cargo build && cargo test
 BUILD
 )
-exec "$ROOT/scripts/mise-build.sh" "flock" "$ROOT/mesh/proxy/flock-proxy" "$BUILD_CMD"
+exec "$ROOT/scripts/mise-build.sh" "hodos" "$ROOT/mesh/proxy/hodos-proxy" "$BUILD_CMD"
