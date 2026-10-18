@@ -17,3 +17,6 @@ id_ed25519*
 .aws/
 .gnupg/
 **/secrets/**
+
+# ffs index caches
+proxy/.ffs/

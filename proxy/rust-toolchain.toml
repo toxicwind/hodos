@@ -1,0 +1,10 @@
+# Contributor convenience: rustup auto-installs the matching toolchain and
+# the components the pre-PR checks need (cargo fmt / cargo clippy) on first
+# build. Tracks nightly — rustfmt.toml uses nightly-only options
+# (indent_style=Block, wrap_comments, format_code_in_doc_comments), so stable
+# silently degrades formatting. CI installs the same channel. The declared
+# minimum supported version lives in Cargo.toml `rust-version` and is
+# enforced by CI's `msrv` job.
+[toolchain]
+channel = "nightly"
+components = ["rustfmt", "clippy"]
