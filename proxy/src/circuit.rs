@@ -78,6 +78,17 @@ impl CircuitBreaker {
 		self.state
 	}
 
+	/// Non-mutating: true only if open AND timeout not yet elapsed.
+	pub fn is_open_and_cooling(&self) -> bool {
+		if self.state != CircuitState::Open {
+			return false;
+		}
+		match self.last_failure {
+			Some(t) => t.elapsed() < self.timeout,
+			None => true,
+		}
+	}
+
 	pub fn failures(&self) -> u32 {
 		self.failures
 	}

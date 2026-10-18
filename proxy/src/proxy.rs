@@ -176,8 +176,9 @@ const QUARANTINE_STRIKES: u32 = 3;
 /// - 400/422/413: the REQUEST is bad -- failing over won't help, surface it.
 /// - 401/403: the KEY is bad -- another key/provider may work, fall over.
 /// - 429/5xx/timeouts: the PROVIDER is struggling -- fall over.
+// 401/403 are auth failures, not transient: fail fast.
 fn retryable(status: reqwest::StatusCode) -> bool {
-	matches!(status.as_u16(), 401 | 403 | 429 | 500 | 502 | 503 | 504)
+	matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504)
 }
 
 /// Backoff for a lane in cooldown: honor Retry-After when present.
@@ -189,6 +190,23 @@ fn backoff_for(resp: &reqwest::Response) -> Duration {
 		.and_then(|s| s.parse::<u64>().ok())
 		.map(Duration::from_secs)
 		.unwrap_or(Duration::from_secs(10))
+}
+
+/// Exponential backoff for 429 with jitter. NVIDIA free tier (~40 RPM/key,
+/// rolling 60s, no Retry-After headers) resets its timer on every request
+/// sent into a 429, so fixed-interval retries extend the lockout. Exponential
+/// backoff (10s->20s->40s->80s, cap 120s) plus +/-25% jitter lets the window
+/// drain and desynchronizes lanes.
+fn backoff_for_429(consecutive: u32) -> Duration {
+    let exp = 10u64.saturating_mul(1u64 << consecutive.min(3));
+    let capped = exp.min(120);
+    let now_nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as u64)
+        .unwrap_or(0);
+    let quarter = capped / 4;
+    let jitter = (now_nanos % (quarter * 2 + 1)).saturating_sub(quarter);
+    Duration::from_secs(capped.saturating_sub(quarter).saturating_add(jitter).max(5))
 }
 
 /// Join the global FIFO queue for a rate-limit slot, invoking `on_wait` every
@@ -981,7 +999,14 @@ fn streaming(
 						return;
 					}
 					let status = resp.status();
-					let backoff = backoff_for(&resp);
+					let backoff = if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+						let n = slot.pool.note_429(slot.lane);
+						let b = backoff_for_429(n);
+						tracing::info!(lane = slot.lane, consecutive_429 = n, ?b, "429 exponential backoff");
+						b
+					} else {
+						backoff_for(&resp)
+					};
 					// Worker exhaustion is model-scoped: back off the model via
 					// the governor, never the lane (see `buffered`).
 					let detail = resp.text().await.unwrap_or_default();
@@ -1009,6 +1034,10 @@ fn streaming(
 						return;
 					}
 					continue;
+				}
+
+				if resp.status().is_success() {
+					slot.pool.clear_429(slot.lane);
 				}
 
 				if !resp.status().is_success() {

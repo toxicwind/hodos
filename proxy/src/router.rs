@@ -670,7 +670,7 @@ impl RouterHandle {
 				drop(def);
 				if !self.inner.health.is_healthy(name) {
 					Some(SkipReason::NotConnected)
-				} else if matches!(rt.circuit.lock().unwrap().state(), CircuitState::Open) {
+				} else if rt.circuit.lock().unwrap().is_open_and_cooling() {
 					Some(SkipReason::CircuitOpen)
 				} else {
 					None
@@ -723,7 +723,7 @@ impl RouterHandle {
 		if !self.inner.health.is_healthy(&name) {
 			return false;
 		}
-		!matches!(rt.circuit.lock().unwrap().state(), CircuitState::Open)
+		!rt.circuit.lock().unwrap().is_open_and_cooling()
 	}
 
 	/// Hybrid order: healthy providers first by ascending latency (measured
