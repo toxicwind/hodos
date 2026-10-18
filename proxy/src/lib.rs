@@ -534,7 +534,7 @@ pub async fn run() {
 	});
 	if let Err(e) = writable {
 		eprintln!(
-			"\nflock cannot start: DATA_DIR {} is not writable ({e}).\nThe config store (settings, \
+			"\nhodos cannot start: DATA_DIR {} is not writable ({e}).\nThe config store (settings, \
 			 users, keys) persists there.\n",
 			data_dir.display()
 		);
@@ -544,7 +544,7 @@ pub async fn run() {
 		Ok(Some(sc)) => sc,
 		Ok(None) => config::StoredConfig::default(),
 		Err(e) => {
-			eprintln!("\nflock cannot start: {e}\n");
+			eprintln!("\nhodos cannot start: {e}\n");
 			std::process::exit(1);
 		},
 	};
@@ -556,7 +556,7 @@ pub async fn run() {
 	let seeded = settings::apply_env_seeds(&mut stored, &|name| std::env::var(name).ok());
 	if !seeded.is_empty() {
 		if let Err(e) = config::save(&data_dir, &stored) {
-			eprintln!("\nflock cannot start: persisting environment seeds failed: {e}\n");
+			eprintln!("\nhodos cannot start: persisting environment seeds failed: {e}\n");
 			std::process::exit(1);
 		}
 		tracing::info!("seeded from environment: {} (store updated)", seeded.join(", "));
