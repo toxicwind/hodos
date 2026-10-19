@@ -7,6 +7,17 @@
 # Secrets stay in DATA_DIR/config.json (client-key digests + NIM key pool),
 # which lives outside the repo — nothing here reads or echoes credentials.
 set -euo pipefail
+# 2026-10-19: source the vault so key_env providers (openrouter, groq,
+# mistral, github, cerebras, freeinference) resolve their API keys at
+# runtime. Without this only the inline-key NVIDIA provider was live and
+# every key_env provider's models 404'd. Same pattern as
+# forge/router/cuttinggate/cuttinggate-serve.sh. Secrets stay in the
+# vault; this script only exports them into the daemon's env.
+if [[ -f "$HOME/.secrets" ]]; then
+  set -a
+  . "$HOME/.secrets"
+  set +a
+fi
 export DATA_DIR="${DATA_DIR:-${HODOS_DATA_DIR:-$HOME/.hodos/nim-data}}"
 export HOST="${HOST:-${HODOS_HOST:-127.0.0.1}}"
 export PORT="${PORT:-${HODOS_PORT:-25193}}"
