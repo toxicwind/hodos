@@ -198,15 +198,15 @@ fn backoff_for(resp: &reqwest::Response) -> Duration {
 /// backoff (10s->20s->40s->80s, cap 120s) plus +/-25% jitter lets the window
 /// drain and desynchronizes lanes.
 fn backoff_for_429(consecutive: u32) -> Duration {
-    let exp = 10u64.saturating_mul(1u64 << consecutive.min(3));
-    let capped = exp.min(120);
-    let now_nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.subsec_nanos() as u64)
-        .unwrap_or(0);
-    let quarter = capped / 4;
-    let jitter = (now_nanos % (quarter * 2 + 1)).saturating_sub(quarter);
-    Duration::from_secs(capped.saturating_sub(quarter).saturating_add(jitter).max(5))
+	let exp = 10u64.saturating_mul(1u64 << consecutive.min(3));
+	let capped = exp.min(120);
+	let now_nanos = std::time::SystemTime::now()
+		.duration_since(std::time::UNIX_EPOCH)
+		.map(|d| d.subsec_nanos() as u64)
+		.unwrap_or(0);
+	let quarter = capped / 4;
+	let jitter = (now_nanos % (quarter * 2 + 1)).saturating_sub(quarter);
+	Duration::from_secs(capped.saturating_sub(quarter).saturating_add(jitter).max(5))
 }
 
 /// Join the global FIFO queue for a rate-limit slot, invoking `on_wait` every
@@ -797,6 +797,7 @@ async fn buffered(
 		request_timeout: cfg.request_timeout,
 		prefer_lane: prefer,
 		gated_path: true,
+		promote_reasoning: cfg.promote_reasoning_content,
 		// The buffered path never watched for a gone client (admission used
 		// `|| true`); the request deadline still bounds every attempt.
 		client_gone: Box::new(|| false),
@@ -1002,7 +1003,12 @@ fn streaming(
 					let backoff = if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
 						let n = slot.pool.note_429(slot.lane);
 						let b = backoff_for_429(n);
-						tracing::info!(lane = slot.lane, consecutive_429 = n, ?b, "429 exponential backoff");
+						tracing::info!(
+							lane = slot.lane,
+							consecutive_429 = n,
+							?b,
+							"429 exponential backoff"
+						);
 						b
 					} else {
 						backoff_for(&resp)

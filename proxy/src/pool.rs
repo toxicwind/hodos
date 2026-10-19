@@ -43,14 +43,14 @@ pub struct LaneSpec {
 }
 
 struct Lane {
-	key:            String,
+	key:             String,
 	/// This key's requests-per-minute budget (keys can differ: paid tiers,
 	/// self-hosted NIM).
-	rpm:            usize,
+	rpm:             usize,
 	/// Timestamps of requests sent within the last WINDOW.
-	sent:           Mutex<VecDeque<Instant>>,
+	sent:            Mutex<VecDeque<Instant>>,
 	/// Lane is in cooldown until this instant (set after an upstream 429/5xx).
-	cooldown_until: Mutex<Instant>,
+	cooldown_until:  Mutex<Instant>,
 	/// Consecutive 429 count for exponential backoff. Reset on success.
 	consecutive_429: Mutex<u32>,
 }
@@ -111,17 +111,17 @@ impl Pool {
 			.into_iter()
 			.map(|s| match old.and_then(|o| o.lanes.iter().find(|l| l.key == s.key)) {
 				Some(prev) => Lane {
-					sent:           Mutex::new(prev.sent.lock().unwrap().clone()),
-					cooldown_until: Mutex::new(*prev.cooldown_until.lock().unwrap()),
+					sent:            Mutex::new(prev.sent.lock().unwrap().clone()),
+					cooldown_until:  Mutex::new(*prev.cooldown_until.lock().unwrap()),
 					consecutive_429: Mutex::new(*prev.consecutive_429.lock().unwrap()),
-					key:            s.key,
-					rpm:            s.rpm,
+					key:             s.key,
+					rpm:             s.rpm,
 				},
 				None => Lane {
-					key:            s.key,
-					rpm:            s.rpm,
-					sent:           Mutex::new(VecDeque::new()),
-					cooldown_until: Mutex::new(now),
+					key:             s.key,
+					rpm:             s.rpm,
+					sent:            Mutex::new(VecDeque::new()),
+					cooldown_until:  Mutex::new(now),
 					consecutive_429: Mutex::new(0),
 				},
 			})

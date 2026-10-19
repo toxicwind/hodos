@@ -6,6 +6,16 @@ description: Append-only record of ingests, decisions, and maintenance passes.
 
 # Log
 
+## [2026-10-19] decision — reasoning-content promotion on the wire
+
+Buffered chat completions with empty/null `content` but non-blank
+`reasoning_content`/`reasoning` are promoted into `content` on the
+proxy wire (config-gated `limits.promote_reasoning_content`, default ON).
+Master fix for the empty-response disease: per-caller fallbacks
+(bidder, corral nimProxy, react-loop) are whack-a-mole; normalization
+belongs in hodos. Streaming SSE stays zero-copy passthrough by design.
+Decision page: knowledge/decisions/reasoning-content-promotion.md.
+
 ## [2026-08-24] maintenance — reconcile governing documentation
 
 Contributor guidance now describes the split embedded presentation layer and

@@ -318,39 +318,43 @@ pub fn sha256_hex(s: &str) -> String {
 /// three NIM keys at 40 rpm, short waits, 1s heartbeat.
 pub struct StoreOpts {
 	/// Open /v1 (no client keys needed). False = keyed mode.
-	pub open:                 bool,
+	pub open: bool,
 	/// (name, plaintext secret) client keys; stored as SHA-256 digests.
-	pub clients:              Vec<(String, String)>,
+	pub clients: Vec<(String, String)>,
 	/// (key, rpm) NIM keys, all enabled and owned by TEST_USER.
-	pub nim_keys:             Vec<(String, usize)>,
+	pub nim_keys: Vec<(String, usize)>,
 	/// Additional users (username, role: "admin" | "user"), all sharing
 	/// TEST_PASSWORD.
-	pub extra_users:          Vec<(String, String)>,
-	pub max_wait_secs:        u64,
-	pub heartbeat_secs:       u64,
-	pub stream_idle_secs:     u64,
+	pub extra_users: Vec<(String, String)>,
+	pub max_wait_secs: u64,
+	pub heartbeat_secs: u64,
+	pub stream_idle_secs: u64,
 	pub request_timeout_secs: u64,
-	pub max_inflight:         usize,
-	pub strict_passthrough:   bool,
+	pub max_inflight: usize,
+	pub strict_passthrough: bool,
+	/// Fill empty content from reasoning_content/reasoning on buffered
+	/// chat completions. Default true (matches production default).
+	pub promote_reasoning_content: bool,
 }
 
 impl Default for StoreOpts {
 	fn default() -> Self {
 		Self {
-			open:                 true,
-			clients:              Vec::new(),
-			nim_keys:             vec![
+			open: true,
+			clients: Vec::new(),
+			nim_keys: vec![
 				("test-key-0".into(), 40),
 				("test-key-1".into(), 40),
 				("test-key-2".into(), 40),
 			],
-			extra_users:          Vec::new(),
-			max_wait_secs:        30,
-			heartbeat_secs:       1,
-			stream_idle_secs:     300,
+			extra_users: Vec::new(),
+			max_wait_secs: 30,
+			heartbeat_secs: 1,
+			stream_idle_secs: 300,
 			request_timeout_secs: 300,
-			max_inflight:         512,
-			strict_passthrough:   false,
+			max_inflight: 512,
+			strict_passthrough: false,
+			promote_reasoning_content: true,
 		}
 	}
 }
@@ -386,6 +390,7 @@ impl StoreOpts {
 				  "request_timeout_secs": self.request_timeout_secs,
 				  "max_inflight": self.max_inflight,
 				  "strict_passthrough": self.strict_passthrough,
+				  "promote_reasoning_content": self.promote_reasoning_content,
 			 },
 			 "users": users,
 		})

@@ -62,6 +62,7 @@
       "max_inflight": 512,
       "max_wait_secs": 900,
       "models_ttl_secs": 600,
+      "promote_reasoning_content": true,
       "request_timeout_secs": 300,
       "stream_idle_secs": 300,
       "strict_passthrough": false

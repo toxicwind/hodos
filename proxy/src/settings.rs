@@ -845,14 +845,18 @@ pub struct LimitsReq {
 }
 
 fn replace_limits(cand: &mut StoredConfig, req: LimitsReq) {
+	// promote_reasoning_content is not dashboard-managed yet: a
+	// Server-form save must not silently reset it.
+	let promote_reasoning_content = cand.limits.promote_reasoning_content;
 	cand.limits = crate::config::Limits {
-		heartbeat_secs:       req.heartbeat_secs,
-		max_inflight:         req.max_inflight,
-		max_wait_secs:        req.max_wait_secs,
-		models_ttl_secs:      req.models_ttl_secs,
+		heartbeat_secs: req.heartbeat_secs,
+		max_inflight: req.max_inflight,
+		max_wait_secs: req.max_wait_secs,
+		models_ttl_secs: req.models_ttl_secs,
 		request_timeout_secs: req.request_timeout_secs,
-		stream_idle_secs:     req.stream_idle_secs,
-		strict_passthrough:   req.strict_passthrough,
+		stream_idle_secs: req.stream_idle_secs,
+		strict_passthrough: req.strict_passthrough,
+		promote_reasoning_content,
 	};
 }
 

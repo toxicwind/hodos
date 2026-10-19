@@ -8242,3 +8242,76 @@ async fn health_probe_flag_reports_liveness() {
 	);
 	assert!(!run_health("1".into()).success(), "--health exits non-zero against a dead port");
 }
+
+#[tokio::test]
+async fn reasoning_content_promotion_on_the_wire() {
+	// Mutation caught: deleting the promotion reopens the reasoning-content
+	// empty-response disease for every client that reads only `content`;
+	// disabling the gate must restore byte-identical relay (2026-10-19
+	// master fix).
+	let reasoning_body = serde_json::json!({
+		"choices": [{
+			"index": 0,
+			"message": {
+				"role": "assistant",
+				"content": null,
+				"reasoning_content": "the promoted answer"
+			},
+			"finish_reason": "stop"
+		}],
+		"usage": {"prompt_tokens": 3, "completion_tokens": 5, "total_tokens": 8}
+	})
+	.to_string();
+
+	// Gate on (production default): the substance guard must NOT treat a
+	// reasoning-only reply as empty, and the proxy must fill `content`
+	// while leaving the reasoning fields in place.
+	let mock = start_mock().await;
+	let proxy = start_proxy(&mock.url, &[]).await;
+	mock.state.push(Behavior::ExactResponse {
+		content_type: "application/json".to_owned(),
+		body:         reasoning_body.clone(),
+	});
+	let response = client()
+		.post(proxy.url("/v1/chat/completions"))
+		.json(&chat_body("reasoning promotion", false))
+		.send()
+		.await
+		.unwrap();
+	assert_eq!(response.status().as_u16(), 200, "reasoning-only reply must not be guarded as empty");
+	let value: serde_json::Value = response.json().await.unwrap();
+	assert_eq!(
+		value["choices"][0]["message"]["content"], "the promoted answer",
+		"empty content must be filled from reasoning_content"
+	);
+	assert_eq!(
+		value["choices"][0]["message"]["reasoning_content"], "the promoted answer",
+		"promotion fills, never moves"
+	);
+	drop(proxy);
+
+	// Gate off: byte-identical relay, content stays null.
+	let mock2 = start_mock().await;
+	let opts = StoreOpts { promote_reasoning_content: false, ..Default::default() };
+	let proxy2 = start_proxy_with(&mock2.url, opts, &[]).await;
+	mock2.state.push(Behavior::ExactResponse {
+		content_type: "application/json".to_owned(),
+		body:         reasoning_body.clone(),
+	});
+	let response2 = client()
+		.post(proxy2.url("/v1/chat/completions"))
+		.json(&chat_body("reasoning promotion", false))
+		.send()
+		.await
+		.unwrap();
+	assert_eq!(response2.status().as_u16(), 200);
+	let value2: serde_json::Value = response2.json().await.unwrap();
+	assert!(
+		value2["choices"][0]["message"]["content"].is_null(),
+		"gate off must not rewrite content"
+	);
+	assert_eq!(
+		value2["choices"][0]["message"]["reasoning_content"], "the promoted answer",
+		"gate off must not touch the reasoning fields either"
+	);
+}

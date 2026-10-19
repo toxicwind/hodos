@@ -128,19 +128,21 @@ pub struct ClientKey {
 #[derive(Serialize, Deserialize, Clone, Debug, ToSchema)]
 pub struct Limits {
 	#[serde(default = "default_heartbeat")]
-	pub heartbeat_secs:       u64,
+	pub heartbeat_secs:            u64,
 	#[serde(default = "default_max_inflight")]
-	pub max_inflight:         usize,
+	pub max_inflight:              usize,
 	#[serde(default = "default_max_wait")]
-	pub max_wait_secs:        u64,
+	pub max_wait_secs:             u64,
 	#[serde(default = "default_models_ttl")]
-	pub models_ttl_secs:      u64,
+	pub models_ttl_secs:           u64,
 	#[serde(default = "default_request_timeout")]
-	pub request_timeout_secs: u64,
+	pub request_timeout_secs:      u64,
 	#[serde(default = "default_stream_idle")]
-	pub stream_idle_secs:     u64,
+	pub stream_idle_secs:          u64,
 	#[serde(default)]
-	pub strict_passthrough:   bool,
+	pub strict_passthrough:        bool,
+	#[serde(default = "default_true")]
+	pub promote_reasoning_content: bool,
 }
 
 impl Default for Limits {
@@ -299,14 +301,15 @@ impl StoredConfig {
 	/// Derive the immutable runtime snapshot the request paths consume.
 	pub fn runtime(&self) -> crate::Config {
 		crate::Config {
-			base_url:           self.upstream.base_url.trim_end_matches('/').to_owned(),
-			max_wait:           Duration::from_secs(self.limits.max_wait_secs),
-			heartbeat:          Duration::from_secs(self.limits.heartbeat_secs),
-			models_ttl:         Duration::from_secs(self.limits.models_ttl_secs),
-			stream_idle:        Duration::from_secs(self.limits.stream_idle_secs),
-			request_timeout:    Duration::from_secs(self.limits.request_timeout_secs),
-			strict_passthrough: self.limits.strict_passthrough,
-			clients:            match self.client_auth.mode {
+			base_url:                  self.upstream.base_url.trim_end_matches('/').to_owned(),
+			max_wait:                  Duration::from_secs(self.limits.max_wait_secs),
+			heartbeat:                 Duration::from_secs(self.limits.heartbeat_secs),
+			models_ttl:                Duration::from_secs(self.limits.models_ttl_secs),
+			stream_idle:               Duration::from_secs(self.limits.stream_idle_secs),
+			request_timeout:           Duration::from_secs(self.limits.request_timeout_secs),
+			strict_passthrough:        self.limits.strict_passthrough,
+			promote_reasoning_content: self.limits.promote_reasoning_content,
+			clients:                   match self.client_auth.mode {
 				Mode::Open => None,
 				Mode::Keyed => Some(
 					self
@@ -317,8 +320,8 @@ impl StoredConfig {
 						.collect(),
 				),
 			},
-			max_inflight:       self.limits.max_inflight,
-			governor:           crate::GovernorSettings {
+			max_inflight:              self.limits.max_inflight,
+			governor:                  crate::GovernorSettings {
 				enabled:   self.governor.enabled,
 				overrides: self.governor.overrides.clone(),
 			},

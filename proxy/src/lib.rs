@@ -77,24 +77,28 @@ const HISTOGRAM_BUCKETS: &[(&str, &[f64])] = &[
 /// takes one `Arc<Config>` via [`AppState::cfg`] and sees a consistent view;
 /// the settings layer swaps in a replacement under the write lock.
 pub struct Config {
-	pub base_url:           String,
-	pub max_wait:           Duration,
-	pub heartbeat:          Duration,
-	pub models_ttl:         Duration,
+	pub base_url:                  String,
+	pub max_wait:                  Duration,
+	pub heartbeat:                 Duration,
+	pub models_ttl:                Duration,
 	/// Abort a stream when the upstream sends nothing for this long (0 = off).
-	pub stream_idle:        Duration,
+	pub stream_idle:               Duration,
 	/// Overall deadline for a non-streaming upstream request (connect + body).
 	/// Streaming has no overall cap (generation can be long) — it relies on
 	/// `stream_idle` instead. Bounds a stalled buffered read holding a slot.
-	pub request_timeout:    Duration,
+	pub request_timeout:           Duration,
 	/// Never modify request bodies (disables stream_options usage injection).
-	pub strict_passthrough: bool,
+	pub strict_passthrough:        bool,
+	/// Fill an empty `content` from `reasoning_content`/`reasoning`
+	/// on buffered chat completions (master reasoning-content fix,
+	/// 2026-10-19). On by default; see the decision page.
+	pub promote_reasoning_content: bool,
 	/// token -> client name. None = local mode, no client auth.
-	pub clients:            Option<HashMap<String, String>>,
+	pub clients:                   Option<HashMap<String, String>>,
 	/// Cap on concurrent requests; bounds memory under floods.
-	pub max_inflight:       usize,
+	pub max_inflight:              usize,
 	/// Model-pressure governor settings (worker concurrency, not RPM).
-	pub governor:           GovernorSettings,
+	pub governor:                  GovernorSettings,
 }
 
 pub struct GovernorSettings {

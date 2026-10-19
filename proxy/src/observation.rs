@@ -613,6 +613,63 @@ pub(crate) fn observe_buffered(body: &[u8]) -> ResponseObservations {
 	state.finish(StreamOutcome::Completed, false, None)
 }
 
+/// Master fix for the reasoning-content empty-response disease
+/// (2026-10-19, Finch): when a chat completion's `message.content` is
+/// null or blank while `message.reasoning_content` (or the bare
+/// `reasoning` field some routes emit) carries the actual text,
+/// promote the reasoning text into `content` so clients that only
+/// read `content` stop seeing an empty completion. The reasoning
+/// fields are left in place -- this only fills an empty field, it
+/// never overwrites real content and never touches choices that
+/// carry tool calls. Returns the rewritten body, or `None` when no
+/// choice needed promotion (the common case: zero-copy passthrough).
+///
+/// Same transient-inspection spirit as [`has_substance`]: the body
+/// is parsed to rewrite it and the caller owns the result; nothing
+/// is retained here.
+pub(crate) fn promote_reasoning_content(body: &[u8]) -> Option<Vec<u8>> {
+	let mut value: serde_json::Value = serde_json::from_slice(body).ok()?;
+	let choices = value.get_mut("choices")?.as_array_mut()?;
+	let mut changed = false;
+	for choice in choices.iter_mut() {
+		let Some(message) = choice.get_mut("message") else {
+			continue;
+		};
+		if message
+			.get("tool_calls")
+			.and_then(|t| t.as_array())
+			.is_some_and(|a| !a.is_empty())
+		{
+			continue;
+		}
+		let content_blank = match message.get("content") {
+			None | Some(serde_json::Value::Null) => true,
+			Some(serde_json::Value::String(s)) => s.trim().is_empty(),
+			Some(_) => false,
+		};
+		if !content_blank {
+			continue;
+		}
+		let Some(text) = ["reasoning_content", "reasoning"]
+			.iter()
+			.find_map(|key| message.get(*key))
+			.and_then(|v| v.as_str())
+			.filter(|s| !s.trim().is_empty())
+			.map(str::to_owned)
+		else {
+			continue;
+		};
+		if let Some(obj) = message.as_object_mut() {
+			obj.insert("content".to_owned(), serde_json::Value::String(text));
+			changed = true;
+		}
+	}
+	if !changed {
+		return None;
+	}
+	serde_json::to_vec(&value).ok()
+}
+
 /// Substance check for the empty-completion guard: does this buffered
 /// response body carry any generated content? A chat-completion choice
 /// counts as substantive when any message.content (or delta.content)
@@ -1569,6 +1626,42 @@ mod tests {
 				choice_index: 0,
 				result:       FinishResult::Unavailable,
 			}]);
+		}
+	}
+
+	#[test]
+	fn promote_reasoning_content_fills_empty_content() {
+		// Mutation caught: dropping the promotion reopens the
+		// reasoning-content empty-response disease for every client
+		// that reads only `content` (2026-10-19 master fix).
+		let body = br#"{"choices":[{"message":{"role":"assistant","content":null,"reasoning_content":"the answer"},"finish_reason":"stop"}]}"#;
+		let promoted = super::promote_reasoning_content(body).expect("promotion");
+		let value: serde_json::Value = serde_json::from_slice(&promoted).unwrap();
+		assert_eq!(value["choices"][0]["message"]["content"], "the answer");
+		// The reasoning field stays put: promotion fills, never moves.
+		assert_eq!(value["choices"][0]["message"]["reasoning_content"], "the answer");
+	}
+
+	#[test]
+	fn promote_reasoning_content_accepts_bare_reasoning_field() {
+		let body = br#"{"choices":[{"message":{"content":"","reasoning":"thought text"}}]}"#;
+		let promoted = super::promote_reasoning_content(body).expect("promotion");
+		let value: serde_json::Value = serde_json::from_slice(&promoted).unwrap();
+		assert_eq!(value["choices"][0]["message"]["content"], "thought text");
+	}
+
+	#[test]
+	fn promote_reasoning_content_leaves_substantive_bodies_untouched() {
+		// Real content wins; tool-call choices are not prose; blank
+		// reasoning promotes nothing; non-completion bodies pass.
+		let bodies: Vec<&[u8]> = vec![
+			br#"{"choices":[{"message":{"content":"real","reasoning_content":"other"}}]}"#.as_slice(),
+			br#"{"choices":[{"message":{"content":null,"reasoning_content":"x","tool_calls":[{"id":"1"}]}}]}"#.as_slice(),
+			br#"{"choices":[{"message":{"content":null,"reasoning_content":"  "}}]}"#.as_slice(),
+			br#"{"ok":true}"#.as_slice(),
+		];
+		for body in bodies {
+			assert!(super::promote_reasoning_content(body).is_none(), "must pass through: {body:?}");
 		}
 	}
 }

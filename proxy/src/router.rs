@@ -1472,30 +1472,33 @@ fn rewrite_body_model(body: &Bytes, model: &str) -> Bytes {
 /// One routed buffered execution: everything the proxy knows about the
 /// request, minus proxy-specific response shaping.
 pub struct ExecuteCtx {
-	pub http:            reqwest::Client,
-	pub method:          reqwest::Method,
-	pub path_query:      String,
-	pub content_type:    Option<String>,
-	pub accept:          Option<String>,
-	pub body:            Bytes,
+	pub http:              reqwest::Client,
+	pub method:            reqwest::Method,
+	pub path_query:        String,
+	pub content_type:      Option<String>,
+	pub accept:            Option<String>,
+	pub body:              Bytes,
 	/// Requested model label (pre-rewrite); used for selection.
-	pub model:           String,
+	pub model:             String,
 	/// Client headers relayed upstream instead of consumed.
 	/// `x-previous-interaction-id` carries the Gemini Interactions turn
 	/// handle: keypool (:25109) needs it to accept a `function_result`, and
 	/// `x-interaction-id` must come back on the response. Dropping them
 	/// breaks the tool loop for anything routed through hodos.
-	pub passthrough:     Vec<(String, String)>,
+	pub passthrough:       Vec<(String, String)>,
 	/// Session identity for sticky affinity.
-	pub session:         Option<String>,
-	pub deadline:        Instant,
-	pub heartbeat:       Duration,
-	pub request_timeout: Duration,
+	pub session:           Option<String>,
+	pub deadline:          Instant,
+	pub heartbeat:         Duration,
+	pub request_timeout:   Duration,
 	/// Conversation-affinity lane hint.
-	pub prefer_lane:     Option<usize>,
+	pub prefer_lane:       Option<usize>,
 	/// Whether generation endpoints gate on the model governor.
-	pub gated_path:      bool,
-	pub client_gone:     Box<dyn Fn() -> bool + Send + Sync>,
+	pub gated_path:        bool,
+	/// Promote reasoning-only text into `content` on buffered
+	/// replies (master reasoning-content fix, 2026-10-19).
+	pub promote_reasoning: bool,
+	pub client_gone:       Box<dyn Fn() -> bool + Send + Sync>,
 }
 
 /// Outcome of [`RouterHandle::execute_buffered`].
@@ -1551,6 +1554,7 @@ impl RouterHandle {
 			request_timeout,
 			prefer_lane,
 			gated_path,
+			promote_reasoning,
 			client_gone,
 		} = ctx;
 		let routing = self.routing_config();
@@ -1830,6 +1834,18 @@ impl RouterHandle {
 								status,
 								acq.attempt_started.elapsed(),
 							);
+							// Master reasoning-content fix (2026-10-19): fill an
+							// empty `content` from reasoning text BEFORE the body is
+							// packaged for the client or for coalesced followers, so
+							// every consumer of this buffered reply is healed at once.
+							let bytes = if promote_reasoning {
+								match crate::observation::promote_reasoning_content(&bytes) {
+									Some(promoted) => bytes::Bytes::from(promoted),
+									None => bytes,
+								}
+							} else {
+								bytes
+							};
 							if let Some(lead) = lead.take() {
 								let shared = std::sync::Arc::new(crate::coalescer::SharedResponse {
 									status,

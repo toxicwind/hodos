@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- On buffered (non-streaming) chat completions, an empty/null `content`
+  is now filled from `reasoning_content` (or the bare `reasoning` field)
+  when that text is non-blank. Reasoning fields are preserved; real
+  content and tool-call choices are never touched. Config-gated by
+  `limits.promote_reasoning_content` (default ON; set `false` or
+  `strict_passthrough` for byte-identical relay). This is the master fix
+  for the 2026-10-19 empty-response disease: per-caller extraction
+  fallbacks are replaced by one on-the-wire normalization. Streaming
+  SSE remains a zero-copy passthrough (see decision page
+  `reasoning-content-promotion`).
 - Installed locale definitions now jointly drive locale bootstrap, public and
   operator catalog bytes, and route acceptance. Catalog URLs accept valid
   canonicalizable spellings such as `en-us`; `en-XA` remains test-only.
