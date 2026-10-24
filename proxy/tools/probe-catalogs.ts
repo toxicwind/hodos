@@ -48,6 +48,17 @@ export interface RatePolicy {
   limit?: number | string;
   window?: string;
   description?: string;
+  /** provenance from the vendored file: how + when it was produced. */
+  method?: string;
+  generated?: string;
+  /**
+   * True when the vendored file is `method: generated` and NOT a dated,
+   * verbatim transcription from the provider — an unverified snapshot
+   * (api-evangelist rate-limits are May-2026 `generated` stubs). Live 429
+   * `Retry-After` headers are the AUTHORITATIVE signal; these are advisory
+   * pace hints and must never override a real 429.
+   */
+  advisory?: boolean;
 }
 
 export interface ProviderEndpoint {
@@ -60,6 +71,62 @@ export interface ProviderEndpoint {
   keyEnv: string | null;
   /** merged upstream rate policies from the vendored catalogs */
   rates: RatePolicy[];
+}
+
+/**
+ * A SyntheticCheck — the canonical monitoring artifact shape defined by the
+ * api-evangelist/monitoring submodule (reference/monitoring/json-schema/
+ * monitoring-synthetic-check-schema.json). The prober emits one per provider
+ * so the catalog is consumable by any monitoring/observability pipeline.
+ */
+export interface SyntheticCheck {
+  id: string;
+  name: string;
+  description: string;
+  type: "endpoint-probe" | "models-listing";
+  target_url: string | null;
+  request: { method: "GET"; url: string | null; auth?: string };
+  assertions: Array<{
+    property: string;
+    op: string;
+    expected: unknown;
+    actual: unknown;
+  }>;
+  locations: string[];
+  frequency_seconds: number;
+  status: string;
+  tags: string[];
+  created: string;
+}
+
+export function toSyntheticCheck(r: ProviderEndpoint): SyntheticCheck {
+  const ok = r.verdict === "ok";
+  return {
+    id: `hodos-${r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    name: `${r.name} models endpoint`,
+    description: `Live probe of ${r.name} ${r.endpoint ?? r.baseUrl ?? "(no baseUrl)"}`,
+    type: "endpoint-probe",
+    target_url: r.endpoint,
+    request: {
+      method: "GET",
+      url: r.endpoint,
+      ...(r.keyEnv ? { auth: r.keyEnv } : {}),
+    },
+    assertions: [
+      {
+        property: "status",
+        op: ok ? "==" : "!=",
+        expected: 200,
+        actual: r.status,
+      },
+      { property: "models", op: ">=", expected: 1, actual: r.models },
+    ],
+    locations: ["estate"],
+    frequency_seconds: 3600,
+    status: r.verdict === "ok" ? "pass" : r.verdict,
+    tags: ["provider", "models", r.verdict],
+    created: new Date().toISOString(),
+  };
 }
 
 const PATH_OVERRIDES: Record<string, (base: string) => string[]> = {
@@ -285,6 +352,7 @@ export async function buildCatalog(): Promise<{
   generatedAt: string;
   sources: string[];
   providers: ProviderEndpoint[];
+  checks: SyntheticCheck[];
   rates: { source: string; policies: RatePolicy[] }[];
   summary: Record<string, number>;
 }> {
@@ -342,6 +410,7 @@ export async function buildCatalog(): Promise<{
     generatedAt: new Date().toISOString(),
     sources: [PINAX_PROVIDERS, NIM_RATE_LIMITS, NVIDIA_RATE_LIMITS],
     providers: results,
+    checks: results.map(toSyntheticCheck),
     rates: rateSources,
     summary,
   };

@@ -4,3 +4,9 @@
 [submodule "reference/nvidia"]
 	path = reference/nvidia
 	url = https://github.com/api-evangelist/nvidia.git
+[submodule "reference/monitoring"]
+	path = reference/monitoring
+	url = https://github.com/api-evangelist/monitoring.git
+[submodule "reference/observability"]
+	path = reference/observability
+	url = https://github.com/api-evangelist/observability.git
