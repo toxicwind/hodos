@@ -409,7 +409,7 @@ fn migrate_v1(mut sc: StoredConfig) -> StoredConfig {
 			})
 			.collect(),
 		models: vec!["*".to_string()],
-		model_map: [("free".to_string(), "nvidia/nemotron-3-ultra-550b-a55b".to_string())]
+		model_map: [("free".to_string(), "nvidia/nemotron-3-ultra-550b-a55b:free".to_string())]
 			.into_iter()
 			.collect(),
 		display_name: "NVIDIA".to_string(),
@@ -950,7 +950,7 @@ mod tests {
 		assert!(nv.free_tier, "migrated nvidia keeps its free-tier lane");
 		assert_eq!(
 			nv.model_map.get("free").map(String::as_str),
-			Some("nvidia/nemotron-3-ultra-550b-a55b"),
+			Some("nvidia/nemotron-3-ultra-550b-a55b:free"),
 			"free directive resolves to a real upstream model"
 		);
 		// The other providers are present but unusable without key material.

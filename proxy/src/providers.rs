@@ -524,7 +524,7 @@ const HODOS_PROVIDER_OVERLAY: &[ProviderOverlay] = &[
 		free_tier:    true,
 		default_rpm:  0,
 		display_name: "nvidia",
-		model_map:    &[("free", "nvidia/nemotron-3-ultra-550b-a55b")],
+		model_map:    &[("free", "nvidia/nemotron-3-ultra-550b-a55b:free")],
 	},
 	ProviderOverlay {
 		name:         "groq",
@@ -929,7 +929,7 @@ mod tests {
 		assert_eq!(nv.keys[1].key_env, "NVIDIA_API_KEYS");
 		assert_eq!(
 			nv.model_map.get("free").map(|s| s.as_str()),
-			Some("nvidia/nemotron-3-ultra-550b-a55b")
+			Some("nvidia/nemotron-3-ultra-550b-a55b:free")
 		);
 		// Roost's nvidia seeds (13 as of 2026-10-16) replace the 2 stale
 		// hardcoded ones.

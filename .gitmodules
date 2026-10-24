@@ -1,0 +1,6 @@
+[submodule "reference/nvidia-nim"]
+	path = reference/nvidia-nim
+	url = https://github.com/api-evangelist/nvidia-nim.git
+[submodule "reference/nvidia"]
+	path = reference/nvidia
+	url = https://github.com/api-evangelist/nvidia.git
