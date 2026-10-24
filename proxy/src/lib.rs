@@ -14,6 +14,7 @@ mod history;
 mod observation;
 mod pinax_providers;
 mod roost_providers;
+pub mod model_ref;
 mod pool;
 mod presentation;
 mod providers;
