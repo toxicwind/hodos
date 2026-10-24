@@ -6,7 +6,7 @@
  * resolver. Live probing is network-dependent, so the fetch path is kept out
  * and the merge/build functions are exercised with fixtures.
  */
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, afterEach } from "bun:test";
 import { parseRateLimits, candidatesFor, keyFor } from "./probe-catalogs.ts";
 
 const NIM_FIXTURE = `# generated NIM limits
