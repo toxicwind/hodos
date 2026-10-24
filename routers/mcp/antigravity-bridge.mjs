@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 const PORT = parseInt(process.env.BRIDGE_PORT || "20129", 10);
 const ROUTER_URL = process.env.ROUTER_URL || "http://127.0.0.1:20128/v1/antigravity";
 const ROUTER_API_KEY =
-  process.env.ROUTER_API_KEY || process.env.HODOS_API_KEY || "sk-hodos-bridge-local";
+  process.env.ROUTER_API_KEY || process.env.OMNIROUTE_API_KEY || "sk-hodos-bridge-local";
 
 // Connection pool agents with TCP keep-alive
 const httpAgent = new http.Agent({
@@ -164,7 +164,7 @@ function resolveTargetModel(model) {
   return clean;
 }
 
-const HODOS_BUILTIN_GROUPS = [
+const OMNIROUTE_BUILTIN_GROUPS = [
   {
     id: "auto/best-coding",
     displayName: "Auto: Best Coding (Hodos)",
@@ -280,12 +280,12 @@ const HODOS_BUILTIN_GROUPS = [
   },
 ];
 
-const HODOS_CUSTOM_MODELS = new Set([
-  ...HODOS_BUILTIN_GROUPS.map((g) => g.id),
+const OMNIROUTE_CUSTOM_MODELS = new Set([
+  ...OMNIROUTE_BUILTIN_GROUPS.map((g) => g.id),
   ...Object.keys(MODEL_ROUTING_MAP),
 ]);
 
-function shouldInterceptToHodos(model, url) {
+function shouldInterceptToOmniRoute(model, url) {
   if (!model) return false;
 
   // Never intercept non-streaming unary RPCs (Antigravity expects raw JSON/Protobuf, not SSE)
@@ -315,8 +315,8 @@ function shouldInterceptToHodos(model, url) {
     clean.startsWith("auto/") ||
     clean.toLowerCase().includes("hodos") ||
     clean.includes("/") ||
-    HODOS_CUSTOM_MODELS.has(model) ||
-    HODOS_CUSTOM_MODELS.has(clean) ||
+    OMNIROUTE_CUSTOM_MODELS.has(model) ||
+    OMNIROUTE_CUSTOM_MODELS.has(clean) ||
     Boolean(MODEL_ROUTING_MAP[model]) ||
     Boolean(MODEL_ROUTING_MAP[clean])
   ) {
@@ -345,7 +345,7 @@ const internalApp = http.createServer(async (req, res) => {
   }
 
   const model = extractModel(bodyJson, url);
-  const shouldIntercept = shouldInterceptToHodos(model, url);
+  const shouldIntercept = shouldInterceptToOmniRoute(model, url);
 
   if (shouldIntercept) {
     const resolvedModel = resolveTargetModel(model);
@@ -442,7 +442,7 @@ const internalApp = http.createServer(async (req, res) => {
                 {};
 
               const injectedIds = [];
-              for (const group of HODOS_BUILTIN_GROUPS) {
+              for (const group of OMNIROUTE_BUILTIN_GROUPS) {
                 data.models[group.id] = {
                   ...baseTemplate,
                   id: group.id,
@@ -564,9 +564,9 @@ proxyServer.on("connect", (req, clientSocket, head) => {
 export {
   resolveTargetModel,
   MODEL_ROUTING_MAP,
-  shouldInterceptToHodos,
+  shouldInterceptToOmniRoute,
   extractModel,
-  HODOS_BUILTIN_GROUPS,
+  OMNIROUTE_BUILTIN_GROUPS,
   proxyServer,
   internalApp,
 };

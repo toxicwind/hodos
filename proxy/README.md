@@ -12,15 +12,6 @@ circuit breakers.
 
 It is a single Rust binary (`src/main.rs` is a shim over `src/lib.rs::run()`).
 
-## Provenance & intent
-
-Hodos is ours. The router layer consolidates the estate's own routing
-functions — the merged `routers/` subtree (proxy engines, ast-race/auto
-strategies, open-sse, MCP bridges) folds in code whose lineage includes the
-formerly separate routers that are retired and removed (no `vansrouter` /
-`omniroute` folder or name remains). We list those upstream names here for
-credit only; the intent is that Hodos is the single, canonical router.
-
 > This README is rebuilt from the source. The previous README described only
 > the old single-NVIDIA path; the code has since become a full multi-provider
 > router. **Source modules are the authority** — see the module map at the

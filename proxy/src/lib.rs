@@ -13,6 +13,7 @@ mod health;
 mod history;
 mod observation;
 mod pinax_providers;
+mod roost_providers;
 mod pool;
 mod presentation;
 mod providers;

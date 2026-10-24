@@ -83,7 +83,7 @@ pub const PINAX_PROVIDERS: &[PinaxProvider] = &[
         name: "hodos",
         display_name: "Hodos (local gateway)",
         base_url: "http://127.0.0.1:20130/v1",
-        key_env: "HODOS_GATEWAY_KEY",
+        key_env: "OMNIROUTE_GATEWAY_KEY",
         key_env_alt: "",
         adapter: "openai",
         auth: "bearer",
