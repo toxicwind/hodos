@@ -55,7 +55,7 @@ digest, agent metadata, configured limits, per-step latency + `exit_reason`
   agent evaluations CI-runnable and framework-portable.
 - The "degrade, don't abort" boundary model matches our watchdog posture
   (fix-forward, never terminal-stop benign work).
-- Fit: evaluation harness for super-ralph / herd agents. Not a nim_proxy
+- Fit: evaluation harness for corral / herd agents. Not a nim_proxy
   runtime concern — recorded here because nim_proxy is the mesh's documented
   research surface.
 

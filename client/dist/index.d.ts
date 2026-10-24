@@ -151,7 +151,7 @@ declare class FlockClient {
 /**
  * FlockKeyPool — multi-key rotation with 429/Retry-After tracking.
  *
- * Absorbed from the standalone super-ralph nimProxy integration so the
+ * Absorbed from the standalone corral nimProxy integration so the
  * flock-client SDK carries the same resilience without a proxy in front:
  * keys are deduplicated on registration, rotation is round-robin over
  * keys whose rate limit has expired, and a 429 parks the offending key

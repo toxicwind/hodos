@@ -4,11 +4,11 @@
 //!
 //! Auth model: a valid client key (`Authorization: Bearer <key>`, the same
 //! key that gates `/v1/*`). Open mode (no client keys configured) admits
-//! everyone as "local". This is the OmniRoute management-surface contract
+//! everyone as "local". This is the Hodos management-surface contract
 //! ported onto hodos's own key store — no second user account, no session
 //! cookie dance, no dashboard role required.
 //!
-//! Ported from OmniRoute (Next.js) 2026-10-14:
+//! Ported from Hodos (Next.js) 2026-10-14:
 //! - GET /api/health/ping  — liveness + DB reachability
 //! - GET /api/providers    — usable-provider list for client model filtering
 //! - GET /api/pricing      — per-provider per-model cost catalog
@@ -80,7 +80,7 @@ pub struct HealthPingResponse {
 	pub timestamp:   String,
 	/// Milliseconds spent satisfying this request (store round-trip).
 	pub latency_ms:  u64,
-	/// Whether the persisted config store loads. OmniRoute's ping answers
+	/// Whether the persisted config store loads. Hodos's ping answers
 	/// for its database; hodos's database is the config store.
 	pub db_ok:       bool,
 	/// Uptime in seconds.
@@ -161,7 +161,7 @@ pub struct ClientProviderPrefix {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ClientProvidersResponse {
-	/// OmniRoute field name; tau-hodossync reads `connections`.
+	/// Hodos field name; tau-hodossync reads `connections`.
 	pub connections: Vec<ClientProviderConnection>,
 	/// Total configured providers (usable or not).
 	pub total:       usize,

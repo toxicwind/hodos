@@ -1,0 +1,21 @@
+# hodos router consolidation pairs (2026-10-24)
+# Merge VansRouter + OmniRoute + estate-router functions into Hodos; strip the
+# vansrouter and omniroute brands entirely — no folder, no name, no residue.
+# Word-boundary-safe so bodybuilder/substrings are never clobbered.
+#
+# The target has no new brand: everything is Hodos now.
+
+# OmniRoute brand -> nothing (fully merged into hodos)
+word:    OmniRoute => Hodos
+word:    OMNIROUTE => HODOS
+word:    omniroute => hodos
+
+# VansRouter brand -> nothing (fully merged into hodos)
+word:    VansRouter => Hodos
+word:    VANSROUTER => HODOS
+word:    vansrouter => hodos
+
+# The repo dirs / file prefixes we introduced (windowed, word-safe)
+word:    proxy.vans => proxy
+word:    proxy.omni => proxy
+word:    omniroute. => proxy.

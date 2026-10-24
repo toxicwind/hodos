@@ -1,209 +1,181 @@
-<div align="center">
-
-<img src="docs/assets/logo.png" alt="hodos" width="140">
-
 # hodos
 
-**One router for every model you can reach — cloud APIs and local fleets —
-with the rate-limit brains to stay inside every provider's speed limit.**
+A multi-provider OpenAI/Anthropic-compatible proxy that never violates an
+upstream provider's speed limit. Hodos fronts every model the estate can
+reach — NVIDIA NIM, Groq, Cerebras, Together, Mistral, OpenRouter, SiliconFlow,
+Google-EAP, free-inference — behind one OpenAI-compatible
+(`/v1/chat/completions`) and Anthropic-Compat (`/v1/messages`) surface, pacing
+every request through a per-key token bucket + FIFO, load-balancing across
+providers by an 8-strategy router, keeping client connections alive while they
+wait, and ride-outing 429/5xx with `Retry-After` honored and per-provider
+circuit breakers.
 
-Speaks **OpenAI** (`/v1/chat/completions`) **and Anthropic**
-(`/v1/messages` — Claude Code works out of the box).
+It is a single Rust binary (`src/main.rs` is a shim over `src/lib.rs::run()`).
 
-[![CI](https://github.com/toxicwind/hodos/actions/workflows/ci.yml/badge.svg)](https://github.com/toxicwind/hodos/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/toxicwind/hodos/actions/workflows/codeql.yml/badge.svg)](https://github.com/toxicwind/hodos/actions/workflows/codeql.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-nightly-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org)
-[![Uptime](https://img.shields.io/badge/focus-zero%20rate%20violations-2EA043)](#how-it-works)
+> This README is rebuilt from the source. The previous README described only
+> the old single-NVIDIA path; the code has since become a full multi-provider
+> router. **Source modules are the authority** — see the module map at the
+> bottom and the `AGENTS.md` invariants.
 
-<img src="docs/assets/dashboard-overview.png" alt="hodos dashboard: Overview tab" width="850">
+## What hodos actually is
 
-</div>
-
----
-
-Free model tiers don't cost money — they cost **patience**. NVIDIA NIM's free
-tier is ~40 requests/minute per key; other providers have their own ceilings.
-When an agent hits the limit, the upstream answers 429 and most clients simply
-abort. hodos sits between your agents and every provider and makes the limit
-invisible:
+Request lifecycle (from `knowledge/architecture/index.md`, verified against
+`src/proxy.rs`, `src/router.rs`, `src/route.rs`):
 
 ```
- Claude Code ──┐                        ┌─► NVIDIA NIM (key pool, paced)
- OpenCode    ──┤   OpenAI   ┌─────────┤─► OpenRouter · Groq · Cerebras · …
- Codex       ──┼────────────►  HODOS  ├─► local llama-swap herd
- n8n / SDKs  ──┘   Anthropic └─────────┤─► any OpenAI-compatible endpoint
-      /v1/messages  /v1/chat/completions
+client
+  -> [client auth]                src/proxy.rs (Bearer SHA-256, or keyed-client)
+  -> [route select]               src/router.rs (8 strategies)
+  -> [provider admission]         circuit -> token bucket -> governor -> FIFO
+  -> [upstream]                   provider base URL + path, model rewritten
+  -> [streaming pipeline]         saves the client connection while waiting
 ```
 
-Every lane: per-key sliding-window pacing, a global FIFO dispatcher, 429
-ride-out with `Retry-After` honored, adaptive per-model worker ceilings,
-circuit breakers, Elo health scoring, SSE heartbeats, and a cached
-`/v1/models` that costs zero rate budget. Load-tested: 100 concurrent
-clients, zero upstream rate violations.
+Unlike the old README's "strict pass-through to NIM", the code is a
+**multi-provider router** (`RouterInner` in `router.rs`). There is no single
+`upstream` in the current config schema (`config.rs` version is `2`); instead a
+registry of `ProviderDef`s owns the fleet, each with its own pool, dispatcher,
+governor, circuit, and coalescer.
 
-This tool **respects provider terms of service** — it maximizes *your own*
-API keys while keeping every key inside its documented speed limit.
+## Invariants (from `AGENTS.md`, non-negotiable)
 
----
+1. **Fail closed.** Pre-setup the data plane is shut; post-setup every operator
+   surface requires a session; a corrupt/future-version config/auth store
+   refuses to boot.
+2. **Zero upstream rate violations.** Not "few". The proxy exists to never
+   exceed the per-key limit.
+3. **The wire format does not move.** API bodies, status codes, content types,
+   OpenAPI, config/history formats, metric names and label values are
+   protected machine contracts. A breaking change needs a decision + tests +
+   release note.
+4. **Data is never localized.** Model ids, client names, publisher names, and
+   every `hodos_*` series pass through untouched.
+5. **Identifiers stay frozen** during label-only work.
+6. **Context owns the sink** (CSP + escaping discipline on the dashboard).
 
-## Highlights
+## Provider routing
 
-- **Claude Code, natively** — `POST /v1/messages` and
-  `/v1/messages/count_tokens` translate the Anthropic wire protocol
-  (content blocks, tool use, streaming event grammar) to any OpenAI-shaped
-  upstream. Point `ANTHROPIC_BASE_URL` at hodos and go.
-- **Multi-provider routing** — 30+ providers from the generated Roost
-  catalog (NIM, OpenRouter, Groq, Cerebras, Together, Mistral, Google EAP,
-  local herds…), selected by named strategies with Elo health scoring and
-  context-aware demotion.
-- **Honest catalogs** — `/v1/models` serves only entitlement-verified
-  models; the strike machinery quarantines anything that starts failing
-  mid-flight instead of advertising a guaranteed 404.
-- **Headless-friendly** — every critical setting can be seeded from
-  environment variables at boot; the operator dashboard (sessions, roles,
-  live metrics, Prometheus at `/metrics`) remains the day-2 surface.
-- **Durable state** — SQLite (WAL) routing state, append-only usage history
-  with bounded retention, hot config reload, `SIGHUP` re-seeding.
+Every provider has a `ProviderDef` (`providers.rs`): a stable `name`, `base_url`,
+`AuthScheme` (ApiKey | None), a list of `ProviderKey`s (each with per-key `rpm`,
+`key_env` fallback), a `models` list, a `model_map` (upstream-id rewrite), `elo`,
+`weight`, `free_tier`, `default_rpm`, and `context_lengths`.
 
-## Quick start
+Config-order routing (8 strategies, `Strategy::parse` names match AstMatrix so
+Herd configs keep meaning them):
 
-```bash
-# build (nightly toolchain; rust-toolchain.toml pins it)
-cargo build --release
+| Strategy           | Behavior                                                     |
+| ------------------ | ------------------------------------------------------------ |
+| `hybrid` (default) | candidates in order; healthy+latency first, then ELO         |
+| `ast_race`         | fan out to every candidate, first usable wins (gated, fixed) |
+| `sticky_affinity`  | prefer the pinned provider for a session                     |
+| `weighted_elo`     | ELO-proportional random choice                               |
+| `least_latency`    | lowest recent latency first                                  |
+| `round_robin`      | atomic counter rotation                                      |
+| `free`             | only free-tier providers (literal model `"free"` forces it)  |
+| `circuit_chain`    | walk candidates until one returns usable                     |
 
-# seed credentials headlessly — the store persists them for the dashboard
-export NIM_API_KEYS="nvapi-key1 nvapi-key2"   # NVIDIA keys (40 RPM each)
-export PROXY_API_KEYS="npk_client1"           # keys your clients present
-export PORT=8000 DATA_DIR=./data
+`"auto"` is a routing directive (not a model name): it classifies the task from
+the prompt text (`routing_intel.rs`) and picks the lane — code → ast race,
+reasoning → hybrid, default → free-then-hybrid.
 
-./target/release/hodos
-```
+Per-attempt admission stack (`RouterHandle::acquire`, `router.rs`):
+**[circuit] → [provider token bucket] → [model governor] → [FIFO slot]**.
 
-Or run the interactive wizard (first visitor claims the superuser):
+- **Circuit breaker** — `CircuitBreaker::astmatrix_defaults()`: 5 failures /
+  30 s / 3 half-open successes.
+- **Token bucket** — `ratelimit.rs`, refills at rate, **per-provider** (tightest
+  of enabled key RPM, else provider default, else 10 free / 60 paid).
+- **Model governor** — `governor.rs`, worker-concurrency (not RPM); only tripped
+  by worker-exhaustion errors; operator-pinned per-model caps.
+- **FIFO dispatcher** — `dispatch.rs`, 25 ms grant spacing; lone candidate
+  retries until deadline, several candidate rounds bounded by `max_retries`.
 
-```bash
-PORT=8000 DATA_DIR=./data ./target/release/hodos
-# open http://localhost:8000 → /setup
-```
+Retryable statuses are `429 | 500 | 502 | 503 | 504` (`router.rs::retryable_status`).
+**A 4xx is the client's error**: relayed verbatim, never retried, never failed
+over, never counted against the circuit. On a retryable status the provider is
+recorded (circuit + lane cooldown, honoring upstream `Retry-After`) and the
+request fails over to the next candidate.
 
-### Claude Code
+Empty-completion substance guard: a 2xx chat completion with no content and no
+tool calls on `/v1/chat/completions` is a **failure** (strikes provider/model,
+fails over, honest 502 when every candidate is empty).
 
-```bash
-export ANTHROPIC_BASE_URL="http://localhost:8000"
-export ANTHROPIC_AUTH_TOKEN="<one of your PROXY_API_KEYS>"
+`promote_reasoning_content` (2026-10-19): a buffered reply with empty `content`
+but non-empty `reasoning_content`/`reasoning` gets its `content` filled from the
+reasoning text before it's packaged for the client or coalesced followers.
 
-claude   # requests hit /v1/messages → translated → your model fleet
-```
+## HTTP surface (`src/routes.rs`, generated OpenAPI)
 
-`claude-*` model ids map to the strongest verified model by default;
-override with `HODOS_ANTHROPIC_DEFAULT_MODEL` or request any real id
-verbatim.
+Auth is split by surface:
 
-### OpenAI-compatible clients
+- **Client-facing** (`/v1/*`, `/api/client/*`, `/api/pricing/*`) — keyed by a
+  Bearer client key (SHA-256 digest, shown once at creation; fail-closed when
+  zero keys). `/v1/{*path}` is the OpenAI-compat proxy; `/v1/messages` +
+  `/v1/messages/count_tokens` are Anthropic-compat; `/v1/custom/bodybuilder` and
+  `/v1/bodybuilder` are the body-rewrite utility.
+- **Operator-facing** (`/`, `/dash`, `/metrics`, `/api/*`) — session cookie
+  (PBKDF2-SHA256 600k-iter, constant-time compare, password-fragment-bound
+  sessions that invalidate on password change).
 
-```bash
-curl -s localhost:8000/v1/chat/completions \
-  -H "Authorization: Bearer $PROXY_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"z-ai/glm-5.3-flash","messages":[{"role":"user","content":"hi"}]}'
-```
+Public: `/health`, `/login`, `/logout`, `/setup` (wizard when no superuser),
+`/api/locale-bootstrap`.
 
-### Kilo / kappa custom provider
+Dashboard API bytes are **declaration-order = wire-order** (`api.rs`); every
+JSON endpoint answers failures with one envelope `{"error": {"code", "message",
+"type":"proxy_error"}}` — the same shape `/v1` uses.
 
-```jsonc
-{
-  "provider": {
-    "hodos": {
-      "name": "Hodos (local router)",
-      "env": ["HODOS_CLIENT_KEY"],
-      "npm": "@ai-sdk/openai-compatible",
-      "options": { "baseURL": "http://127.0.0.1:25193/v1" },
-      "models": {
-        "nvidia/nemotron-3.5-super-vl-120b-a12b": { "name": "Nemotron 3.5 Super VL" }
-      }
-    }
-  }
-}
-```
+## Observability
 
-## Configuration
+- `/metrics` — Prometheus exposition (bounded label cardinality; model labels
+  beyond a cap collapse to `other`).
+- `/api/dashboard`, `/api/dashboard/now` — rolled-up history, live registry
+  values + the config they were sampled under.
+- `src/history.rs` — SQLite-backed telemetry rollups (config store double as
+  save-mutex), `history-revision` in responses.
+- Routing decision records (`decision.rs`): why a provider was chosen, what was
+  skipped and why (structured tracing; `AstrLink` pattern).
 
-The store (`DATA_DIR/config.json`, edited in the dashboard) is the source of
-truth. Environment variables **seed** it at boot — additive and idempotent;
-nothing the operator set through the dashboard is ever downgraded.
+Env (container-level only): `HOST`, `PORT`, `DATA_DIR`, `RUST_LOG`,
+`TRUST_PROXY`. Everything else — providers, keys, routing, limits, users,
+history — lives in `DATA_DIR/config.json` (version 2, migrated from v1) and is
+managed through the settings API. Legacy env (`NIM_API_KEYS`, `NIM_BASE_URL`,
+`RPM_PER_KEY`, `PROXY_API_KEYS`, …) is read only once and warned on: those
+settings now live in the dashboard.
 
-| Variable | Seeds |
-|---|---|
-| `NIM_BASE_URL` | upstream base URL (default: NVIDIA NIM) |
-| `NIM_API_KEYS` | NIM key pool (comma/space separated) |
-| `RPM_PER_KEY` | per-key rpm for environment-seeded keys |
-| `PROXY_API_KEYS` | client bearer keys (stored hashed, never plaintext) |
-| `ADMIN_PASSWORD` | first superuser — only when no superuser exists |
-| `INSECURE_NO_AUTH=1` | switch `/v1` to open mode (explicit opt-in) |
-| `MAX_WAIT_SECS`, `HEARTBEAT_SECS`, `MODELS_TTL_SECS`, `STREAM_IDLE_SECS`, `REQUEST_TIMEOUT_SECS`, `MAX_INFLIGHT` | patience + load limits |
-| `STRICT_PASSTHROUGH`, `HISTORY_DAYS` | relay + retention |
-| `PORT`, `HOST`, `DATA_DIR`, `TRUST_PROXY` | server itself (not stored) |
+## Build & health
 
-Secrets are stored hashed (client keys) or in the local store file only —
-they never appear in logs, metrics, or responses.
+- `hodos --health` probes own `/health` (for HEALTHCHECK on a scratch image
+  with no shell/curl).
+- Tests are extensive in-tree; before merge: `cargo fmt --check` plus the named
+  proof in `knowledge/testing/test-strategy.md`.
 
-## How it works
+## Module map (src/, all the source)
 
-1. **Admission** — client auth (keyed or open), in-flight shed, deadline
-   header (`x-hodos-deadline-ms`).
-2. **Dispatch** — global FIFO + per-lane permit; the model-pressure governor
-   parks lanes that hit a provider's worker ceiling (adaptive, dissolves on
-   pressure clear).
-3. **Pacing** — per-key sliding window paced to the provider limit; keys
-   rotate round-robin with prefix-cache affinity.
-4. **Ride-out** — 429/5xx retried with `Retry-After` honored; circuit
-   breakers per provider; empty-completion strikes quarantine dead models.
-5. **Observation** — Prometheus metrics, Elo health, structured routing
-   decisions (why a provider was chosen, why others were skipped), usage
-   history with bounded retention.
-
-## Operations
-
-```bash
-curl -s localhost:8000/health          # liveness (always open)
-curl -s localhost:8000/metrics         # Prometheus
-open http://localhost:8000/            # operator dashboard (sessions/roles)
-```
-
-Deployment patterns, scraping, supply-chain posture, and the dashboard API
-are documented in [`docs/`](docs/) and the operator knowledge base in
-[`knowledge/`](knowledge/).
-
-## Testing
-
-```bash
-cargo test            # unit + integration (wire contracts, e2e, openapi)
-cargo fmt --check     # nightly rustfmt (rust-toolchain.toml pins the channel)
-cargo clippy
-```
-
-The suite covers the wire-format contracts (OpenAPI regenerated and asserted
-against handlers), SSE translation grammar, key-pool rotation under 429
-storms, governor pressure lifecycle, and retention across restarts.
-
-## Provenance
-
-The proxy core derives from [miztertea/nim-proxy](https://github.com/miztertea/nim-proxy)
-(MIT) — one canonical build absorbed into the hodos tree (v0.6.6, zero feature
-loss; see `FEATURE_PARITY.md`). Deliberate compatibility keeps: the
-`nimproxy-history` record marker, `X-Nim-Keys-Deadline` header, and
-`/api/settings/nim-keys` route.
-
-## Contributing, security & support
-
-See [`CONTRIBUTING.md`](CONTRIBUTING.md), the security policy in
-[`SECURITY.md`](SECURITY.md), and support channels in
-[`SUPPORT.md`](SUPPORT.md). Patches follow Plan → Act → Verify with red→green
-regression checks; every wire-format change needs a decision record and a
-release note.
-
-## License
-
-[MIT](LICENSE) — upstream nim-proxy © its authors; hodos changes © hodos
-contributors.
+| file                                        | role                                                         |
+| ------------------------------------------- | ------------------------------------------------------------ |
+| `lib.rs`                                    | app state, config snapshot, router wiring, `run()` entry     |
+| `routes.rs`                                 | fixed route paths + test-only contract inventory             |
+| `proxy.rs`                                  | `/v1` request handling (deadline header, pacing, streaming)  |
+| `router.rs`                                 | the multi-provider router: strategies, admission, failover   |
+| `providers.rs`                              | provider/model/key schema + 13 seeded provider registry      |
+| `pinax_providers.rs` / `roost_providers.rs` | provider-detail registries                                   |
+| `ratelimit.rs`                              | per-provider token bucket                                    |
+| `dispatch.rs`                               | FIFO slot dispatcher (25 ms grant spacing)                   |
+| `pool.rs`                                   | per-key lane pool, 61 s sliding windows                      |
+| `governor.rs`                               | per-model worker-concurrency governor                        |
+| `circuit.rs`                                | circuit breaker (5/30/3)                                     |
+| `coalescer.rs`                              | identical in-flight buffered-request coalescing (5 s TTL)    |
+| `anthropic.rs`                              | Anthropic-messages surface                                   |
+| `bodybuilder.rs`                            | request/response body rewrite utility                        |
+| `observation.rs`                            | streaming pipeline + usage observation metrics               |
+| `decision.rs`                               | routing-decision record (why chosen, why skipped)            |
+| `routing_intel.rs`                          | `"auto"` lane classification from prompt text                |
+| `health.rs`                                 | health/ELO/latency DB + state persistence to SQLite          |
+| `history.rs`                                | telemetry history rollups                                    |
+| `config.rs`                                 | the persisted config store (v2)                              |
+| `auth.rs`                                   | operator sessions (PBKDF2, throttle) + client-key primitives |
+| `settings.rs`                               | the settings API handlers                                    |
+| `api.rs`                                    | typed dashboard/API wire format + generated OpenAPI          |
+| `client_api.rs`                             | key-gated client endpoints (`/api/health/ping`, pricing)     |
+| `dots.rs`, `presentation.rs`                | dashboard surface                                            |
+| `main.rs`                                   | thin shim calling `lib.rs::run()`                            |

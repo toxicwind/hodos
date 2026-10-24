@@ -1313,7 +1313,7 @@ fn aggregate_models(body: &Bytes, router: &crate::router::RouterHandle) -> Bytes
 	//  2. Live 404 strikes (dynamic): a model the upstream 404'd
 	//     QUARANTINE_STRIKES times stops being advertised until the strikes
 	//     decay (see RouterHandle::EMPTY_STRIKE_DECAY).
-	let dead: std::collections::HashSet<&str> = crate::roost_providers::ROOST_DEAD_IDS
+	let dead: std::collections::HashSet<&str> = crate::pinax_providers::ROOST_DEAD_IDS
 		.iter()
 		.copied()
 		.collect();
