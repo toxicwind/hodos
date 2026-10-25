@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Hodos Antigravity Bridge Proxy
+ * Rhodochrosite Antigravity Bridge Proxy
  *
  * Intercepts Antigravity CLI and IDE requests:
  * - Directs Gemini 3.8 models directly to Google backend (100% native, untouched).
- * - Directs other models (Claude Sonnet 4.5/4.6, Opus, Gemini 3.7, GPT-OSS, etc.) to Hodos /v1/antigravity.
+ * - Directs other models (Claude Sonnet 4.5/4.6, Opus, Gemini 3.7, GPT-OSS, etc.) to Rhodochrosite /v1/antigravity.
  * - Passes all non-model Google requests (auth, onboarding, telemetry) directly to Google backend.
  * - Transparently forwards all other non-target internet traffic.
  */
@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 const PORT = parseInt(process.env.BRIDGE_PORT || "20129", 10);
 const ROUTER_URL = process.env.ROUTER_URL || "http://127.0.0.1:20128/v1/antigravity";
 const ROUTER_API_KEY =
-  process.env.ROUTER_API_KEY || process.env.OMNIROUTE_API_KEY || "sk-hodos-bridge-local";
+  process.env.ROUTER_API_KEY || process.env.OMNIROUTE_API_KEY || "sk-rhodochrosite-bridge-local";
 
 // Connection pool agents with TCP keep-alive
 const httpAgent = new http.Agent({
@@ -43,7 +43,7 @@ let cachedSslOptions = null;
 function getSslOptions() {
   if (cachedSslOptions) return cachedSslOptions;
   const certDir =
-    process.env.CERT_DIR || path.join(process.env.HOME || process.cwd(), ".hodos", "mitm");
+    process.env.CERT_DIR || path.join(process.env.HOME || process.cwd(), ".rhodochrosite", "mitm");
   const serverKey = path.join(certDir, "server.key");
   const serverCrt = path.join(certDir, "server.crt");
 
@@ -98,7 +98,7 @@ function extractModel(body, url) {
 }
 
 const MODEL_ROUTING_MAP = {
-  // Official Hodos Auto Groups
+  // Official Rhodochrosite Auto Groups
   "auto/best-fast": "groq/openai/gpt-oss-120b",
   "auto/best-coding": "mistral/codestral-latest",
   "auto/best-reasoning": "nvidia/nvidia/nemotron-3-super-120b-a12b",
@@ -117,22 +117,22 @@ const MODEL_ROUTING_MAP = {
   "auto/gemma": "groq/qwen/qwen3.8-27b",
 
   // Human-readable Display Names (in case CLI sends displayName in envelope)
-  "Auto: Best Fast (Hodos)": "groq/openai/gpt-oss-120b",
-  "Auto: Best Coding (Hodos)": "mistral/codestral-latest",
-  "Auto: Best Reasoning (Hodos)": "nvidia/nvidia/nemotron-3-super-120b-a12b",
-  "Auto: Best Free (Hodos)": "groq/qwen/qwen3.8-27b",
-  "Auto: Best Vision (Hodos)": "nvidia/meta/llama-3.2-90b-vision-instruct",
-  "Auto: Coding Pro (Hodos)": "mistral/codestral-latest",
-  "Auto: Coding Fast (Hodos)": "groq/openai/gpt-oss-120b",
-  "Auto: Coding Free (Hodos)": "groq/qwen/qwen3.8-27b",
-  "Auto: Coding Reliable (Hodos)": "mistral/codestral-latest",
-  "Auto: Reasoning Pro (Hodos)": "nvidia/nvidia/nemotron-3-super-120b-a12b",
-  "Auto: Smart (Hodos)": "nvidia/nvidia/nemotron-3-super-120b-a12b",
-  "Auto: Claude Sonnet (Hodos)": "mistral/codestral-latest",
-  "Auto: Claude Opus (Hodos)": "nvidia/nvidia/nemotron-3-super-120b-a12b",
-  "Auto: Gemini (Hodos)": "gemini/gemini-2.5-flash",
-  "Auto: Llama (Hodos)": "groq/openai/gpt-oss-120b",
-  "Auto: Gemma (Hodos)": "groq/qwen/qwen3.8-27b",
+  "Auto: Best Fast (Rhodochrosite)": "groq/openai/gpt-oss-120b",
+  "Auto: Best Coding (Rhodochrosite)": "mistral/codestral-latest",
+  "Auto: Best Reasoning (Rhodochrosite)": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+  "Auto: Best Free (Rhodochrosite)": "groq/qwen/qwen3.8-27b",
+  "Auto: Best Vision (Rhodochrosite)": "nvidia/meta/llama-3.2-90b-vision-instruct",
+  "Auto: Coding Pro (Rhodochrosite)": "mistral/codestral-latest",
+  "Auto: Coding Fast (Rhodochrosite)": "groq/openai/gpt-oss-120b",
+  "Auto: Coding Free (Rhodochrosite)": "groq/qwen/qwen3.8-27b",
+  "Auto: Coding Reliable (Rhodochrosite)": "mistral/codestral-latest",
+  "Auto: Reasoning Pro (Rhodochrosite)": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+  "Auto: Smart (Rhodochrosite)": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+  "Auto: Claude Sonnet (Rhodochrosite)": "mistral/codestral-latest",
+  "Auto: Claude Opus (Rhodochrosite)": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+  "Auto: Gemini (Rhodochrosite)": "gemini/gemini-2.5-flash",
+  "Auto: Llama (Rhodochrosite)": "groq/openai/gpt-oss-120b",
+  "Auto: Gemma (Rhodochrosite)": "groq/qwen/qwen3.8-27b",
 
   // Fail-safe self-healing for dead/retired models
   "nvidia/deepseek-ai/deepseek-v4-pro-0813": "groq/openai/gpt-oss-120b",
@@ -167,85 +167,85 @@ function resolveTargetModel(model) {
 const OMNIROUTE_BUILTIN_GROUPS = [
   {
     id: "auto/best-coding",
-    displayName: "Auto: Best Coding (Hodos)",
+    displayName: "Auto: Best Coding (Rhodochrosite)",
     descriptionText:
-      "Hodos dynamic routing to the highest benchmark coding model available (Mistral Codestral)",
+      "Rhodochrosite dynamic routing to the highest benchmark coding model available (Mistral Codestral)",
   },
   {
     id: "auto/best-reasoning",
-    displayName: "Auto: Best Reasoning (Hodos)",
+    displayName: "Auto: Best Reasoning (Rhodochrosite)",
     descriptionText:
-      "Hodos dynamic routing to the highest benchmark reasoning model available (Nemotron 3 Super 120B)",
+      "Rhodochrosite dynamic routing to the highest benchmark reasoning model available (Nemotron 3 Super 120B)",
   },
   {
     id: "auto/best-fast",
-    displayName: "Auto: Best Fast (Hodos)",
-    descriptionText: "Hodos sub-second lowest latency high-throughput model (Groq LPUs)",
+    displayName: "Auto: Best Fast (Rhodochrosite)",
+    descriptionText: "Rhodochrosite sub-second lowest latency high-throughput model (Groq LPUs)",
   },
   {
     id: "auto/best-vision",
-    displayName: "Auto: Best Vision (Hodos)",
-    descriptionText: "Hodos multimodal & computer vision routing",
+    displayName: "Auto: Best Vision (Rhodochrosite)",
+    descriptionText: "Rhodochrosite multimodal & computer vision routing",
   },
   {
     id: "auto/best-free",
-    displayName: "Auto: Best Free (Hodos)",
-    descriptionText: "Hodos 100% unmetered free tier model routing (Qwen 3.8 27B)",
+    displayName: "Auto: Best Free (Rhodochrosite)",
+    descriptionText: "Rhodochrosite 100% unmetered free tier model routing (Qwen 3.8 27B)",
   },
   {
     id: "auto/coding:pro",
-    displayName: "Auto: Coding Pro (Hodos)",
-    descriptionText: "Hodos frontier pro-tier coding model (Codestral)",
+    displayName: "Auto: Coding Pro (Rhodochrosite)",
+    descriptionText: "Rhodochrosite frontier pro-tier coding model (Codestral)",
   },
   {
     id: "auto/coding:fast",
-    displayName: "Auto: Coding Fast (Hodos)",
-    descriptionText: "Hodos fast sub-second daily coding model (Groq 120B)",
+    displayName: "Auto: Coding Fast (Rhodochrosite)",
+    descriptionText: "Rhodochrosite fast sub-second daily coding model (Groq 120B)",
   },
   {
     id: "auto/coding:free",
-    displayName: "Auto: Coding Free (Hodos)",
-    descriptionText: "Hodos zero-cost free coding model",
+    displayName: "Auto: Coding Free (Rhodochrosite)",
+    descriptionText: "Rhodochrosite zero-cost free coding model",
   },
   {
     id: "auto/coding:reliable",
-    displayName: "Auto: Coding Reliable (Hodos)",
-    descriptionText: "Hodos maximum uptime and reliability coding model",
+    displayName: "Auto: Coding Reliable (Rhodochrosite)",
+    descriptionText: "Rhodochrosite maximum uptime and reliability coding model",
   },
   {
     id: "auto/reasoning:pro",
-    displayName: "Auto: Reasoning Pro (Hodos)",
-    descriptionText: "Hodos deep reasoning frontier model",
+    displayName: "Auto: Reasoning Pro (Rhodochrosite)",
+    descriptionText: "Rhodochrosite deep reasoning frontier model",
   },
   {
     id: "auto/smart",
-    displayName: "Auto: Smart (Hodos)",
-    descriptionText: "Hodos highest intelligence general-purpose model",
+    displayName: "Auto: Smart (Rhodochrosite)",
+    descriptionText: "Rhodochrosite highest intelligence general-purpose model",
   },
   {
     id: "auto/claude-sonnet",
-    displayName: "Auto: Claude Sonnet (Hodos)",
-    descriptionText: "Hodos automated routing across Claude Sonnet providers",
+    displayName: "Auto: Claude Sonnet (Rhodochrosite)",
+    descriptionText: "Rhodochrosite automated routing across Claude Sonnet providers",
   },
   {
     id: "auto/claude-opus",
-    displayName: "Auto: Claude Opus (Hodos)",
-    descriptionText: "Hodos automated routing across Claude Opus providers",
+    displayName: "Auto: Claude Opus (Rhodochrosite)",
+    descriptionText: "Rhodochrosite automated routing across Claude Opus providers",
   },
   {
     id: "auto/gemini",
-    displayName: "Auto: Gemini (Hodos)",
-    descriptionText: "Hodos automated routing across Gemini providers",
+    displayName: "Auto: Gemini (Rhodochrosite)",
+    descriptionText: "Rhodochrosite automated routing across Gemini providers",
   },
   {
     id: "auto/llama",
-    displayName: "Auto: Llama (Hodos)",
-    descriptionText: "Hodos automated routing across Llama providers",
+    displayName: "Auto: Llama (Rhodochrosite)",
+    descriptionText: "Rhodochrosite automated routing across Llama providers",
   },
   {
     id: "auto/gemma",
-    displayName: "Auto: Gemma (Hodos)",
-    descriptionText: "Hodos automated routing across Gemma providers",
+    displayName: "Auto: Gemma (Rhodochrosite)",
+    descriptionText: "Rhodochrosite automated routing across Gemma providers",
   },
   // Active, verified provider models
   {
@@ -309,11 +309,11 @@ function shouldInterceptToOmniRoute(model, url) {
     return false;
   }
 
-  // Intercept any Hodos auto group, provider model, or mapped alias
+  // Intercept any Rhodochrosite auto group, provider model, or mapped alias
   const clean = model.replace(/^models\//, "").trim();
   if (
     clean.startsWith("auto/") ||
-    clean.toLowerCase().includes("hodos") ||
+    clean.toLowerCase().includes("rhodochrosite") ||
     clean.includes("/") ||
     OMNIROUTE_CUSTOM_MODELS.has(model) ||
     OMNIROUTE_CUSTOM_MODELS.has(clean) ||
@@ -350,7 +350,7 @@ const internalApp = http.createServer(async (req, res) => {
   if (shouldIntercept) {
     const resolvedModel = resolveTargetModel(model);
     console.log(
-      `[Bridge] 🔀 INTERCEPTING -> Hodos: "${model || "default"}" => "${resolvedModel}" (${url})`
+      `[Bridge] 🔀 INTERCEPTING -> Rhodochrosite: "${model || "default"}" => "${resolvedModel}" (${url})`
     );
 
     let outgoingBuffer = bodyBuffer;
@@ -363,15 +363,15 @@ const internalApp = http.createServer(async (req, res) => {
       outgoingBuffer = Buffer.from(JSON.stringify(cloned), "utf-8");
     }
 
-    // Forward to Hodos /v1/antigravity
+    // Forward to Rhodochrosite /v1/antigravity
     try {
       const forwardHeaders = {
         "Content-Type": "application/json",
         "Content-Length": Buffer.byteLength(outgoingBuffer),
         Authorization: `Bearer ${ROUTER_API_KEY}`,
-        "x-hodos-source": "agent-bridge",
-        "x-hodos-agent": "antigravity",
-        "x-hodos-skip-usage": "true", // Skip usage tracking for default models
+        "x-rhodochrosite-source": "agent-bridge",
+        "x-rhodochrosite-agent": "antigravity",
+        "x-rhodochrosite-skip-usage": "true", // Skip usage tracking for default models
       };
 
       const upstreamReq = http.request(
@@ -389,10 +389,10 @@ const internalApp = http.createServer(async (req, res) => {
       upstreamReq.setNoDelay(true);
 
       upstreamReq.on("error", (err) => {
-        console.error(`[Bridge] ❌ Error forwarding to Hodos: ${err.message}`);
+        console.error(`[Bridge] ❌ Error forwarding to Rhodochrosite: ${err.message}`);
         if (!res.headersSent) {
           res.writeHead(502, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: { message: `Hodos bridge error: ${err.message}` } }));
+          res.end(JSON.stringify({ error: { message: `Rhodochrosite bridge error: ${err.message}` } }));
         }
       });
 
@@ -400,7 +400,7 @@ const internalApp = http.createServer(async (req, res) => {
       upstreamReq.end();
       return;
     } catch (err) {
-      console.error(`[Bridge] ❌ Failed to invoke Hodos: ${err.message}`);
+      console.error(`[Bridge] ❌ Failed to invoke Rhodochrosite: ${err.message}`);
     }
   }
 
@@ -434,7 +434,7 @@ const internalApp = http.createServer(async (req, res) => {
           try {
             const data = JSON.parse(respBuffer.toString("utf-8"));
             if (data && data.models) {
-              // Inject Hodos built-in auto groups and models
+              // Inject Rhodochrosite built-in auto groups and models
               const baseTemplate =
                 data.models["claude-sonnet-4-6"] ||
                 data.models["gpt-oss-120b-medium"] ||
@@ -453,7 +453,7 @@ const internalApp = http.createServer(async (req, res) => {
                 injectedIds.push(group.id);
               }
 
-              // Prepend Hodos groups to agentModelSorts recommended group
+              // Prepend Rhodochrosite groups to agentModelSorts recommended group
               if (
                 Array.isArray(data.agentModelSorts) &&
                 data.agentModelSorts[0]?.groups?.[0]?.modelIds
@@ -510,7 +510,7 @@ internalApp.headersTimeout = 66000;
 const proxyServer = http.createServer((req, res) => {
   // Plain HTTP request (non-CONNECT)
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Hodos Antigravity Bridge Proxy Active\n");
+  res.end("Rhodochrosite Antigravity Bridge Proxy Active\n");
 });
 
 proxyServer.keepAliveTimeout = 65000;
@@ -575,7 +575,7 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPat
 
 if (isMain) {
   proxyServer.listen(PORT, "127.0.0.1", () => {
-    console.log(`🚀 Hodos Antigravity Bridge listening on 127.0.0.1:${PORT}`);
+    console.log(`🚀 Rhodochrosite Antigravity Bridge listening on 127.0.0.1:${PORT}`);
     console.log(`   Routing non-Gemini 3.8 model traffic -> ${ROUTER_URL}`);
     console.log(`   Preserving Gemini 3.8 native traffic -> Google`);
   });

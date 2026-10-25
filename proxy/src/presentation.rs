@@ -23,7 +23,7 @@ struct InstalledLocale {
 const DASHBOARD: &str = include_str!("web/dashboard.html");
 const LOGIN: &str = include_str!("web/login.html");
 const SETUP: &str = include_str!("web/setup.html");
-const HODOS_ICON: &str = include_str!("web/icons/hodos.svg");
+const RHODOCHROSITE_ICON: &str = include_str!("web/icons/rhodochrosite.svg");
 const EN_US_SOURCE: &str = include_str!("web/locales/en-US.json");
 
 pub const DEFAULT_LOCALE: &str = "en-US";
@@ -183,7 +183,7 @@ static PAGES: OnceLock<Pages> = OnceLock::new();
 
 fn pages() -> &'static Pages {
 	PAGES.get_or_init(|| Pages {
-		dashboard:                 DASHBOARD.replace("<!-- hodos-icon -->", HODOS_ICON),
+		dashboard:                 DASHBOARD.replace("<!-- rhodochrosite-icon -->", RHODOCHROSITE_ICON),
 		login:                     LOGIN.replace("{{error_code}}", ""),
 		login_invalid_credentials: LOGIN.replace("{{error_code}}", "invalid_credentials"),
 		setup:                     SETUP.to_owned(),
@@ -287,7 +287,7 @@ mod tests {
 		let first = page(Page::Dashboard);
 		let second = page(Page::Dashboard);
 		assert!(std::ptr::eq(first.as_ptr(), second.as_ptr()));
-		assert!(first.contains(HODOS_ICON));
-		assert!(!first.contains("<!-- hodos-icon -->"));
+		assert!(first.contains(RHODOCHROSITE_ICON));
+		assert!(!first.contains("<!-- rhodochrosite-icon -->"));
 	}
 }

@@ -5,5 +5,5 @@
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    hodos::fuzz_proxy::sanitize_label(data);
+    rhodochrosite::fuzz_proxy::sanitize_label(data);
 });

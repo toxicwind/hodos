@@ -1,7 +1,7 @@
-# hodos
+# rhodochrosite
 
 A multi-provider OpenAI/Anthropic-compatible proxy that never violates an
-upstream provider's speed limit. Hodos fronts every model the estate can
+upstream provider's speed limit. Rhodochrosite fronts every model the estate can
 reach — NVIDIA NIM, Groq, Cerebras, Together, Mistral, OpenRouter, SiliconFlow,
 Google-EAP, free-inference — behind one OpenAI-compatible
 (`/v1/chat/completions`) and Anthropic-Compat (`/v1/messages`) surface, pacing
@@ -17,7 +17,7 @@ It is a single Rust binary (`src/main.rs` is a shim over `src/lib.rs::run()`).
 > router. **Source modules are the authority** — see the module map at the
 > bottom and the `AGENTS.md` invariants.
 
-## What hodos actually is
+## What rhodochrosite actually is
 
 Request lifecycle (from `knowledge/architecture/index.md`, verified against
 `src/proxy.rs`, `src/router.rs`, `src/route.rs`):
@@ -49,7 +49,7 @@ governor, circuit, and coalescer.
    protected machine contracts. A breaking change needs a decision + tests +
    release note.
 4. **Data is never localized.** Model ids, client names, publisher names, and
-   every `hodos_*` series pass through untouched.
+   every `rhodochrosite_*` series pass through untouched.
 5. **Identifiers stay frozen** during label-only work.
 6. **Context owns the sink** (CSP + escaping discipline on the dashboard).
 
@@ -144,7 +144,7 @@ settings now live in the dashboard.
 
 ## Build & health
 
-- `hodos --health` probes own `/health` (for HEALTHCHECK on a scratch image
+- `rhodochrosite --health` probes own `/health` (for HEALTHCHECK on a scratch image
   with no shell/curl).
 - Tests are extensive in-tree; before merge: `cargo fmt --check` plus the named
   proof in `knowledge/testing/test-strategy.md`.

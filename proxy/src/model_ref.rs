@@ -2,11 +2,11 @@
 //!
 //! The router's model id is NOT a flat string. A model lives at
 //!   `<parent>/<provider>/<model>[:<tier>][:<flavor>]`
-//! e.g. `hodos/google/gemini-flash-tool-retrieval` or
-//!      `hodos/nvidia/nemotron-3-ultra-550b-a55b:free`.
-//! `hodos` is the ROUTER (a parent namespace), not a provider. Dropping the
-//! provider (a bare `hodos/qwen3.6-35b`) is a PARSE ERROR — that is the whole
-//! point: the old flat `hodos/<model>` form silently produced unknown-model
+//! e.g. `rhodochrosite/google/gemini-flash-tool-retrieval` or
+//!      `rhodochrosite/nvidia/nemotron-3-ultra-550b-a55b:free`.
+//! `rhodochrosite` is the ROUTER (a parent namespace), not a provider. Dropping the
+//! provider (a bare `rhodochrosite/qwen3.6-35b`) is a PARSE ERROR — that is the whole
+//! point: the old flat `rhodochrosite/<model>` form silently produced unknown-model
 //! routing. Now the provider dimension is mandatory.
 //!
 //! Tier/flavor are part of the model, itself a small tuple. Everything renders
@@ -15,14 +15,14 @@
 use std::fmt;
 use std::str::FromStr;
 
-/// Top-level namespace. Only `hodos` today; reserved so future router names
+/// Top-level namespace. Only `rhodochrosite` today; reserved so future router names
 /// can be modelled without touching every consumer.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ParentRef(pub String);
 
 impl Default for ParentRef {
     fn default() -> Self {
-        ParentRef("hodos".to_string())
+        ParentRef("rhodochrosite".to_string())
     }
 }
 
@@ -152,7 +152,7 @@ impl fmt::Display for ModelRefParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "not a 3-segment model ref; got '{}'. Expected 'hodos/<provider>/<model>[:tier]'",
+            "not a 3-segment model ref; got '{}'. Expected 'rhodochrosite/<provider>/<model>[:tier]'",
             self.0
         )
     }
@@ -172,8 +172,8 @@ mod tests {
 
     #[test]
     fn parses_the_three_segment_form() {
-        let r: ModelRef = "hodos/google/gemini-flash-tool-retrieval".parse().unwrap();
-        assert_eq!(r.parent.0, "hodos");
+        let r: ModelRef = "rhodochrosite/google/gemini-flash-tool-retrieval".parse().unwrap();
+        assert_eq!(r.parent.0, "rhodochrosite");
         assert_eq!(r.provider.0, "google");
         assert_eq!(r.model.id, "gemini-flash-tool-retrieval");
         assert!(r.model.qualifiers.is_empty());
@@ -181,7 +181,7 @@ mod tests {
 
     #[test]
     fn parses_tier_qualifier() {
-        let r: ModelRef = "hodos/nvidia/nemotron-3-ultra-550b-a55b:free"
+        let r: ModelRef = "rhodochrosite/nvidia/nemotron-3-ultra-550b-a55b:free"
             .parse()
             .unwrap();
         assert_eq!(r.provider.0, "nvidia");
@@ -192,15 +192,15 @@ mod tests {
 
     #[test]
     fn renders_round_trip() {
-        let s = "hodos/google/gemini-3.8-flash";
+        let s = "rhodochrosite/google/gemini-3.8-flash";
         let r: ModelRef = s.parse().unwrap();
         assert_eq!(r.wire(), s);
     }
 
     #[test]
     fn missing_provider_is_a_parse_error() {
-        // hodos/qwen3.6-35b has NO provider segment -> invalid by design.
-        let err = "hodos/qwen3.6-35b".parse::<ModelRef>();
+        // rhodochrosite/qwen3.6-35b has NO provider segment -> invalid by design.
+        let err = "rhodochrosite/qwen3.6-35b".parse::<ModelRef>();
         assert!(err.is_err());
     }
 

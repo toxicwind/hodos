@@ -88,7 +88,7 @@ export const FIFO_MAX = 64;
 
 export const STRATEGY = process.env.ESTATE_STRATEGY || "hybrid";
 
-export const UA = "Mozilla/5.0 (compatible; Estate-Hodos/3.1)";
+export const UA = "Mozilla/5.0 (compatible; Estate-Rhodochrosite/3.1)";
 
 // ---------------------------------------------------------------------------
 // HERD_V1 (must come before PROVIDERS that uses it)

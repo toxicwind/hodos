@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 set -uo pipefail
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-LOG="$HOME/.hodos-maxfix/keys-$STAMP.log"; : > "$LOG"
+LOG="$HOME/.rhodochrosite-maxfix/keys-$STAMP.log"; : > "$LOG"
 log(){ printf '%s\n' "$*" | tee -a "$LOG"; }
 hdr(){ log ""; log "════════════════════════════════════════════════════════════════════"; log "$*"; log "════════════════════════════════════════════════════════════════════"; }
 
-hdr "hodos-keys-fix $STAMP"
+hdr "rhodochrosite-keys-fix $STAMP"
 
 # ── 1. correct mise daemons invocation ────────────────────────────────────
 hdr "1. mise daemons — correct name"
-mise daemons ls 2>&1 | grep -i hodos | tee -a "$LOG" || true
+mise daemons ls 2>&1 | grep -i rhodochrosite | tee -a "$LOG" || true
 
 # ── 2. extract the *client* key from config.json ──────────────────────────
 hdr "2. client key from config.json"
-CFG="$HOME/.hodos-data/config.json"
+CFG="$HOME/.rhodochrosite-data/config.json"
 CLIENT_KEY=""
 if [ -f "$CFG" ] && command -v jq >/dev/null 2>&1; then
   # Try common shapes
@@ -26,9 +26,9 @@ if [ -f "$CFG" ] && command -v jq >/dev/null 2>&1; then
   log "  jq candidate: ${CLIENT_KEY:0:14}…"
 fi
 
-# Fallback: any string starting with 'hodos_' in config.json
+# Fallback: any string starting with 'rhodochrosite_' in config.json
 if [ -z "$CLIENT_KEY" ]; then
-  CLIENT_KEY=$(grep -oE '"hodos_[A-Za-z0-9_-]{16,}"' "$CFG" 2>/dev/null | head -1 | tr -d '"')
+  CLIENT_KEY=$(grep -oE '"rhodochrosite_[A-Za-z0-9_-]{16,}"' "$CFG" 2>/dev/null | head -1 | tr -d '"')
   log "  grep candidate: ${CLIENT_KEY:0:14}…"
 fi
 
@@ -41,14 +41,14 @@ fi
 # ── 3. show ALL keys in config.json for manual pick ───────────────────────
 hdr "3. all client keys found in $CFG (for inspection)"
 if [ -f "$CFG" ]; then
-  grep -oE '"hodos_[A-Za-z0-9_-]{16,}"' "$CFG" 2>/dev/null | sort -u | tee -a "$LOG" || true
+  grep -oE '"rhodochrosite_[A-Za-z0-9_-]{16,}"' "$CFG" 2>/dev/null | sort -u | tee -a "$LOG" || true
   grep -oE '"sk-[A-Za-z0-9_-]{16,}"' "$CFG" 2>/dev/null | sort -u | tee -a "$LOG" || true
 fi
 
 # ── 4. probe with whatever we found ──────────────────────────────────────
 hdr "4. probe /v1/models with each candidate"
 for K in "$CLIENT_KEY" \
-         "$(grep -m1 '^FLOCK_API_KEY=' "$HOME/estate/config/hodos-ssot/hodos.env" 2>/dev/null | cut -d= -f2-)" \
+         "$(grep -m1 '^FLOCK_API_KEY=' "$HOME/estate/config/rhodochrosite-ssot/rhodochrosite.env" 2>/dev/null | cut -d= -f2-)" \
 ; do
   [ -z "$K" ] && continue
   code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
@@ -59,9 +59,9 @@ done
 # ── 5. canonical ops ──────────────────────────────────────────────────────
 hdr "5. canonical ops (the correct names)"
 log "  mise daemons ls                      # list all"
-log "  mise daemons status estate/hodos     # not 'hodos'"
-log "  mise daemons restart estate/hodos"
-log "  mise daemons logs estate/hodos"
-log "  mise daemons stop estate/hodos"
+log "  mise daemons status estate/rhodochrosite     # not 'rhodochrosite'"
+log "  mise daemons restart estate/rhodochrosite"
+log "  mise daemons logs estate/rhodochrosite"
+log "  mise daemons stop estate/rhodochrosite"
 
 hdr "DONE — $LOG"

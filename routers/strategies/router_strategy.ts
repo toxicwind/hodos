@@ -117,7 +117,7 @@ export async function callOne(
     headers["HTTP-Referer"] = "https://zed.dev";
     headers["X-Title"] = "Estate-Router";
   }
-  // Model-pressure governor (hodos governor.rs AIMD, per provider/model):
+  // Model-pressure governor (rhodochrosite governor.rs AIMD, per provider/model):
   // refused fast with 429 when the model is at its worker cap or draining.
   const govKey = `${provider}/${model}`;
   const permit = state.governor.admit(govKey);
@@ -852,7 +852,7 @@ export const ROUTERS: Record<
   fifo_matrix: routeFifo,
   fifo_flock: routeFifo,
   ast_race: routeAstRace,
-  hodos_race: routeAstRace,
+  rhodochrosite_race: routeAstRace,
   sticky_affinity: routeSticky,
   weighted_elo: routeWeighted,
   circuit_chain: routeCircuitChain,

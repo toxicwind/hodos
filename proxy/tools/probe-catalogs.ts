@@ -1,5 +1,5 @@
 /**
- * probe-catalogs.ts — hodos native catalog prober.
+ * probe-catalogs.ts — rhodochrosite native catalog prober.
  *
  * Merges the estate's provider catalogs into ONE live-probed model/limit map:
  *   1. pinax providers            (ranch/pinax/generated/providers.json) — where providers live
@@ -8,10 +8,10 @@
  *
  * It then probes each provider's models endpoint to LIVE truth (verdicts:
  * ok / needs-auth / throttled / missing / unreachable) and merges the
- * submodule rate-limits so hodos paces against the ACTUAL upstream policy
+ * submodule rate-limits so rhodochrosite paces against the ACTUAL upstream policy
  * (e.g. NVIDIA hosted NIM = 40 RPM / 5 concurrent), not a guess.
  *
- * The output (catalog.json) is the single source the control plane and hodos
+ * The output (catalog.json) is the single source the control plane and rhodochrosite
  * routing read — merging the legacy prober + the two api-evangelist catalogs,
  * both vendored as submodules under reference/.
  */
@@ -102,7 +102,7 @@ export interface SyntheticCheck {
 export function toSyntheticCheck(r: ProviderEndpoint): SyntheticCheck {
   const ok = r.verdict === "ok";
   return {
-    id: `hodos-${r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    id: `rhodochrosite-${r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
     name: `${r.name} models endpoint`,
     description: `Live probe of ${r.name} ${r.endpoint ?? r.baseUrl ?? "(no baseUrl)"}`,
     type: "endpoint-probe",

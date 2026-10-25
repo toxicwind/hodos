@@ -1,7 +1,7 @@
 //! Anthropic Messages API surface (`/v1/messages`) — Claude Code compatibility.
 //!
 //! Claude Code speaks the Anthropic wire protocol (`x-api-key`, `/v1/messages`,
-//! content blocks, `stop_reason`, its own SSE event grammar). Hodos's upstreams
+//! content blocks, `stop_reason`, its own SSE event grammar). Rhodochrosite's upstreams
 //! speak OpenAI chat completions. This module translates between the two and
 //! delegates the actual request to the standard proxy path, so every Anthropic
 //! request gets the same pacing, key-pool rotation, governor, circuit, and
@@ -33,11 +33,11 @@ use crate::AppState;
 
 /// Model requested when the client asks for a `claude-*` id (or omits the
 /// model): the strongest verified NIM model, overridable per deployment via
-/// `HODOS_ANTHROPIC_DEFAULT_MODEL`.
+/// `RHODOCHROSITE_ANTHROPIC_DEFAULT_MODEL`.
 const DEFAULT_ANTHROPIC_MODEL: &str = "nvidia/nemotron-3.5-super-vl-120b-a12b";
 
 fn default_model() -> String {
-	std::env::var("HODOS_ANTHROPIC_DEFAULT_MODEL")
+	std::env::var("RHODOCHROSITE_ANTHROPIC_DEFAULT_MODEL")
 		.ok()
 		.filter(|m| !m.trim().is_empty())
 		.unwrap_or_else(|| DEFAULT_ANTHROPIC_MODEL.to_owned())

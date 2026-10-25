@@ -1,6 +1,6 @@
 $schema: 'https://moonrepo.dev/schemas/project.json'
 
-# hodos — ranch component (Greek-named where descriptive).
+# rhodochrosite — ranch component (Greek-named where descriptive).
 language: 'typescript'
 stack: 'backend'
 tags:

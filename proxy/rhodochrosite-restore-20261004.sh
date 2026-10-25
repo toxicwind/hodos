@@ -1,35 +1,35 @@
 #!/usr/bin/env bash
-# hodos-restore-20261004.sh — bring :25193 back, move it under systemd --user,
+# rhodochrosite-restore-20261004.sh — bring :25193 back, move it under systemd --user,
 # retire the SIGHUP approach (the Rust binary does not handle HUP), retire the
-# patch scaffolding. Cutting-edge operator UX: hodos-ctl subcommands.
+# patch scaffolding. Cutting-edge operator UX: rhodochrosite-ctl subcommands.
 set -uo pipefail
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-RUN="$HOME/.hodos-maxfix/restore-$STAMP"
+RUN="$HOME/.rhodochrosite-maxfix/restore-$STAMP"
 mkdir -p "$RUN"
 LOG="$RUN/restore.log"
 : > "$LOG"
 log(){ printf '%s\n' "$*" | tee -a "$LOG"; }
 hdr(){ log ""; log "════════════════════════════════════════════════════════════════════"; log "$*"; log "════════════════════════════════════════════════════════════════════"; }
 
-hdr "hodos-restore $STAMP"
+hdr "rhodochrosite-restore $STAMP"
 
 # ── 1. Diagnose.
 hdr "1. diagnose"
 ss -tlnpH 'sport = :25193' 2>/dev/null | tee -a "$LOG" || log "  ✗ no listener on :25193"
-pgrep -af 'hodos|pitchfork' 2>/dev/null | tee -a "$LOG" || log "  no hodos/pitchfork procs"
-BIN="$HOME/.hodos/hodos"
-LAUNCH="$HOME/estate/ranch/hodos/bin/hodos-run.sh"
+pgrep -af 'rhodochrosite|pitchfork' 2>/dev/null | tee -a "$LOG" || log "  no rhodochrosite/pitchfork procs"
+BIN="$HOME/.rhodochrosite/rhodochrosite"
+LAUNCH="$HOME/estate/ranch/rhodochrosite/bin/rhodochrosite-run.sh"
 [ -x "$BIN" ]    && log "  binary:   OK  $BIN"    || { log "  binary:   MISSING"; exit 1; }
 [ -x "$LAUNCH" ] && log "  launcher: OK  $LAUNCH" || log "  launcher: MISSING (will exec $BIN directly)"
 
 # ── 2. Stop pitchfork from fighting systemd over :25193.
-hdr "2. retire pitchfork ownership of hodos"
+hdr "2. retire pitchfork ownership of rhodochrosite"
 if command -v pitchfork >/dev/null 2>&1; then
-  pitchfork stop hodos 2>&1 | tee -a "$LOG" || log "  pitchfork stop hodos: (nothing running)"
+  pitchfork stop rhodochrosite 2>&1 | tee -a "$LOG" || log "  pitchfork stop rhodochrosite: (nothing running)"
 else
   log "  pitchfork not in PATH"
 fi
-# also, if any bare hodos process is holding :25193, kill it (SIGTERM, graceful)
+# also, if any bare rhodochrosite process is holding :25193, kill it (SIGTERM, graceful)
 OLD_PID=$(ss -tlnpH 'sport = :25193' 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)
 if [ -n "$OLD_PID" ]; then
   log "  killing stale pid $OLD_PID (SIGTERM)"
@@ -40,17 +40,17 @@ fi
 
 # ── 3. Flat env file systemd can parse (EnvironmentFile= has no shell logic).
 hdr "3. flat EnvironmentFile"
-SSOT="$HOME/estate/config/hodos-ssot"
+SSOT="$HOME/estate/config/rhodochrosite-ssot"
 mkdir -p "$SSOT"
-FLAT="$SSOT/hodos.env"
+FLAT="$SSOT/rhodochrosite.env"
 umask 077
 {
-  echo "# hodos.env — flat key=value for systemd EnvironmentFile=. Generated $STAMP."
+  echo "# rhodochrosite.env — flat key=value for systemd EnvironmentFile=. Generated $STAMP."
   echo "FLOCK_PORT=25193"
   echo "PORT=25193"
   echo "HOST=127.0.0.1"
-  echo "FLOCK_DATA_DIR=$HOME/.hodos-data"
-  echo "DATA_DIR=$HOME/.hodos-data"
+  echo "FLOCK_DATA_DIR=$HOME/.rhodochrosite-data"
+  echo "DATA_DIR=$HOME/.rhodochrosite-data"
   echo "FLOCK_ASTMATRIX_DB=$HOME/estate/data/ast_matrix.db"
   echo "RUST_LOG=info"
   if [ -r "$HOME/.secrets" ]; then
@@ -72,19 +72,19 @@ UD="$HOME/.config/systemd/user"
 mkdir -p "$UD"
 
 # Use a dedicated launcher that execs the binary (so systemd tracks the real PID).
-LAUNCH_CANON="$HOME/.hodos/hodos-launch.sh"
+LAUNCH_CANON="$HOME/.rhodochrosite/rhodochrosite-launch.sh"
 cat > "$LAUNCH_CANON" <<'LSEOF'
 #!/usr/bin/env bash
 set -euo pipefail
 : "${FLOCK_PORT:=25193}"
-: "${FLOCK_DATA_DIR:=$HOME/.hodos-data}"
+: "${FLOCK_DATA_DIR:=$HOME/.rhodochrosite-data}"
 : "${HOST:=127.0.0.1}"
 mkdir -p "$FLOCK_DATA_DIR"
-exec "$HOME/.hodos/hodos" --host "$HOST" --port "$FLOCK_PORT" --data-dir "$FLOCK_DATA_DIR"
+exec "$HOME/.rhodochrosite/rhodochrosite" --host "$HOST" --port "$FLOCK_PORT" --data-dir "$FLOCK_DATA_DIR"
 LSEOF
 # NOTE: the Rust binary's real flags vary by build. If it rejects --host/--port,
 # fall back to env-only. Discover flags now:
-if "$HOME/.hodos/hodos" --help 2>&1 | grep -qiE -- '--port|--host|--data-dir'; then
+if "$HOME/.rhodochrosite/rhodochrosite" --help 2>&1 | grep -qiE -- '--port|--host|--data-dir'; then
   log "  binary accepts --host/--port/--data-dir"
 else
   log "  binary does not advertise --host/--port/--data-dir; using env-only launcher"
@@ -92,18 +92,18 @@ else
 #!/usr/bin/env bash
 set -euo pipefail
 : "${PORT:=${FLOCK_PORT:-25193}}"
-: "${DATA_DIR:=${FLOCK_DATA_DIR:-$HOME/.hodos-data}}"
+: "${DATA_DIR:=${FLOCK_DATA_DIR:-$HOME/.rhodochrosite-data}}"
 : "${HOST:=127.0.0.1}"
 export PORT DATA_DIR HOST FLOCK_PORT FLOCK_DATA_DIR
 mkdir -p "$DATA_DIR"
-exec "$HOME/.hodos/hodos"
+exec "$HOME/.rhodochrosite/rhodochrosite"
 LSEOF
 fi
 chmod 0755 "$LAUNCH_CANON"
 
-cat > "$UD/hodos.service" <<SVCEOF
+cat > "$UD/rhodochrosite.service" <<SVCEOF
 [Unit]
-Description=hodos — rate-limit-aware NVIDIA NIM proxy
+Description=rhodochrosite — rate-limit-aware NVIDIA NIM proxy
 Documentation=file://$SSOT/ROUTER_CANON.md
 After=network-online.target
 Wants=network-online.target
@@ -112,12 +112,12 @@ StartLimitBurst=5
 
 [Service]
 Type=exec
-WorkingDirectory=$HOME/estate/ranch/hodos
+WorkingDirectory=$HOME/estate/ranch/rhodochrosite
 EnvironmentFile=$FLAT
 ExecStart=$LAUNCH_CANON
 # Readiness gate: only mark active once /health answers.
 ExecStartPost=/bin/sh -c 'i=0; while [ \$i -lt 60 ]; do if curl -sf -o /dev/null http://127.0.0.1:25193/health; then exit 0; fi; i=\$((i+1)); sleep 1; done; exit 1'
-# NO ExecReload= — the binary has no SIGHUP handler. Use 'systemctl --user restart hodos'.
+# NO ExecReload= — the binary has no SIGHUP handler. Use 'systemctl --user restart rhodochrosite'.
 Restart=always
 RestartSec=2
 TimeoutStartSec=90
@@ -145,18 +145,18 @@ SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
 UMask=0077
-ReadWritePaths=$HOME/.hodos-data $HOME/estate/data $HOME/.hodos $HOME/.cache
+ReadWritePaths=$HOME/.rhodochrosite-data $HOME/estate/data $HOME/.rhodochrosite $HOME/.cache
 LimitNOFILE=65536
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=hodos
+SyslogIdentifier=rhodochrosite
 SVCEOF
-log "  wrote $UD/hodos.service"
+log "  wrote $UD/rhodochrosite.service"
 
 # ── 5. Reload, enable, start.
 hdr "5. enable + start"
 systemctl --user daemon-reload 2>&1 | tee -a "$LOG"
-systemctl --user enable --now hodos.service 2>&1 | tee -a "$LOG"
+systemctl --user enable --now rhodochrosite.service 2>&1 | tee -a "$LOG"
 
 # ── 6. Wait for readiness.
 hdr "6. wait for :25193 + /health"
@@ -169,7 +169,7 @@ for i in $(seq 1 60); do
 done
 if [ "$ok" -ne 1 ]; then
   log "  ✗ not ready — dumping journal:"
-  journalctl --user -u hodos.service -n 120 --no-pager 2>&1 | tee -a "$LOG"
+  journalctl --user -u rhodochrosite.service -n 120 --no-pager 2>&1 | tee -a "$LOG"
   exit 1
 fi
 
@@ -183,31 +183,31 @@ log "  /v1/models (first 20):"
 curl -sS -i --max-time 10 -H "Authorization: Bearer $KEY" \
   http://127.0.0.1:25193/v1/models 2>&1 | head -20 | tee -a "$LOG"
 
-# ── 8. Operator UX: hodos-ctl.
-hdr "8. hodos-ctl"
-CTL="$HOME/.local/bin/hodos-ctl"
+# ── 8. Operator UX: rhodochrosite-ctl.
+hdr "8. rhodochrosite-ctl"
+CTL="$HOME/.local/bin/rhodochrosite-ctl"
 mkdir -p "$(dirname "$CTL")"
 cat > "$CTL" <<'CTLEOF'
 #!/usr/bin/env bash
 set -euo pipefail
 case "${1:-status}" in
-  start)   systemctl --user start hodos ;;
-  stop)    systemctl --user stop hodos ;;
-  restart) systemctl --user restart hodos ;;
-  reload)  echo "hodos has no SIGHUP handler; use: hodos-ctl restart" >&2; exit 2 ;;
-  status)  systemctl --user status hodos --no-pager ;;
-  logs)    journalctl --user -u hodos -f ;;
-  errors)  journalctl --user -u hodos -p err -n 200 --no-pager ;;
+  start)   systemctl --user start rhodochrosite ;;
+  stop)    systemctl --user stop rhodochrosite ;;
+  restart) systemctl --user restart rhodochrosite ;;
+  reload)  echo "rhodochrosite has no SIGHUP handler; use: rhodochrosite-ctl restart" >&2; exit 2 ;;
+  status)  systemctl --user status rhodochrosite --no-pager ;;
+  logs)    journalctl --user -u rhodochrosite -f ;;
+  errors)  journalctl --user -u rhodochrosite -p err -n 200 --no-pager ;;
   health)  curl -sS -i http://127.0.0.1:25193/health ;;
-  models)  K=$(grep -m1 '^FLOCK_API_KEY=' "$HOME/estate/config/hodos-ssot/hodos.env" | cut -d= -f2-); \
+  models)  K=$(grep -m1 '^FLOCK_API_KEY=' "$HOME/estate/config/rhodochrosite-ssot/rhodochrosite.env" | cut -d= -f2-); \
            curl -sS -H "Authorization: Bearer $K" http://127.0.0.1:25193/v1/models ;;
   port)    ss -tlnpH 'sport = :25193' ;;
   pid)     ss -tlnpH 'sport = :25193' | grep -oP 'pid=\K[0-9]+' | head -1 ;;
-  test)    K=$(grep -m1 '^FLOCK_API_KEY=' "$HOME/estate/config/hodos-ssot/hodos.env" | cut -d= -f2-); \
+  test)    K=$(grep -m1 '^FLOCK_API_KEY=' "$HOME/estate/config/rhodochrosite-ssot/rhodochrosite.env" | cut -d= -f2-); \
            curl -sS -H "Authorization: Bearer $K" -H 'Content-Type: application/json' \
              -d '{"model":"nvidia/nemotron-3-ultra-550b-a55b","messages":[{"role":"user","content":"reply: OK"}],"max_tokens":4}' \
              http://127.0.0.1:25193/v1/chat/completions ;;
-  *)       echo "usage: hodos-ctl {start|stop|restart|status|logs|errors|health|models|port|pid|test}"; exit 2 ;;
+  *)       echo "usage: rhodochrosite-ctl {start|stop|restart|status|logs|errors|health|models|port|pid|test}"; exit 2 ;;
 esac
 CTLEOF
 chmod 0755 "$CTL"
@@ -217,42 +217,42 @@ export PATH="$HOME/.local/bin:$PATH"
 # ── 9. Retire the scaffolding scripts (move, not rm).
 hdr "9. retire scaffolding"
 for f in \
-  "$HOME/estate/ranch/mesh/proxy/hodos-proxy/patch.sh" \
-  "$HOME/estate/ranch/mesh/proxy/hodos-proxy/hodos-final-20261004.sh" \
-  "$HOME/estate/ranch/mesh/proxy/hodos-proxy/hodos-final2-20261004.sh" \
-  "$HOME/estate/ranch/mesh/proxy/hodos-proxy/hodos-maximal-20261004.sh" \
+  "$HOME/estate/ranch/mesh/proxy/rhodochrosite-proxy/patch.sh" \
+  "$HOME/estate/ranch/mesh/proxy/rhodochrosite-proxy/rhodochrosite-final-20261004.sh" \
+  "$HOME/estate/ranch/mesh/proxy/rhodochrosite-proxy/rhodochrosite-final2-20261004.sh" \
+  "$HOME/estate/ranch/mesh/proxy/rhodochrosite-proxy/rhodochrosite-maximal-20261004.sh" \
 ; do
   [ -f "$f" ] || continue
   mv "$f" "$f.retired.$STAMP"
   log "  retired: $f"
 done
-# snapshot the whole hodos-maxfix history for the audit trail
-tar -czf "$RUN/hodos-maxfix-history.tgz" -C "$HOME" .hodos-maxfix 2>/dev/null || true
-log "  archived: $RUN/hodos-maxfix-history.tgz"
+# snapshot the whole rhodochrosite-maxfix history for the audit trail
+tar -czf "$RUN/rhodochrosite-maxfix-history.tgz" -C "$HOME" .rhodochrosite-maxfix 2>/dev/null || true
+log "  archived: $RUN/rhodochrosite-maxfix-history.tgz"
 
 # ── 10. Canonical state.
 hdr "10. CANONICAL STATE"
-systemctl --user status hodos.service --no-pager 2>&1 | tee -a "$LOG"
+systemctl --user status rhodochrosite.service --no-pager 2>&1 | tee -a "$LOG"
 log ""
 PID=$(ss -tlnpH 'sport = :25193' 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)
 H1=$(sha256sum "/proc/$PID/exe" 2>/dev/null | awk '{print $1}')
-H2=$(sha256sum "$HOME/.hodos/hodos" 2>/dev/null | awk '{print $1}')
+H2=$(sha256sum "$HOME/.rhodochrosite/rhodochrosite" 2>/dev/null | awk '{print $1}')
 log "  :25193 owner:  pid=$PID"
 log "  running hash:  $H1"
 log "  on-disk hash:  $H2"
 [ "$H1" = "$H2" ] && log "  ✓ running == on-disk" || log "  ✗ mismatch"
 log ""
-log "  unit:    $UD/hodos.service"
+log "  unit:    $UD/rhodochrosite.service"
 log "  env:     $FLAT"
 log "  ctl:     $CTL"
 log "  SSOT:    $SSOT"
 log ""
 log "  daily ops:"
-log "    hodos-ctl restart          # atomic, no SIGHUP"
-log "    hodos-ctl logs             # journalctl -u hodos -f"
-log "    hodos-ctl health | models | test"
+log "    rhodochrosite-ctl restart          # atomic, no SIGHUP"
+log "    rhodochrosite-ctl logs             # journalctl -u rhodochrosite -f"
+log "    rhodochrosite-ctl health | models | test"
 log ""
 log "  The Rust binary has no SIGHUP handler; every previous 'reload' killed it."
-log "  systemd --user now owns the lifecycle. pitchfork no longer manages hodos."
+log "  systemd --user now owns the lifecycle. pitchfork no longer manages rhodochrosite."
 
 hdr "DONE — $LOG"

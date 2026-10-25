@@ -41,7 +41,7 @@ function loadBenchPriors(): {
 }
 
 // ---------------------------------------------------------------------------
-// Model-pressure governor (ported from hodos proxy/src/governor.rs).
+// Model-pressure governor (ported from rhodochrosite proxy/src/governor.rs).
 //
 // NIM's serving stack has a per-model worker-concurrency cap orthogonal to
 // the per-key RPM limit ("ResourceExhausted: Worker local total request
@@ -59,7 +59,7 @@ function loadBenchPriors(): {
 //   wrong in both directions.
 // - An operator override pins a fixed cap for a model (no adaptation).
 //
-// Keyed by "provider/model" (hodos was NVIDIA-only and keyed by model name).
+// Keyed by "provider/model" (rhodochrosite was NVIDIA-only and keyed by model name).
 // ---------------------------------------------------------------------------
 
 /// The worker-exhaustion signature in an upstream error body. Must be

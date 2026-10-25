@@ -1,0 +1,21 @@
+# rhodochrosite router consolidation pairs (2026-10-24)
+# Merge VansRouter + OmniRoute + estate-router functions into Rhodochrosite; strip the
+# vansrouter and omniroute brands entirely — no folder, no name, no residue.
+# Word-boundary-safe so bodybuilder/substrings are never clobbered.
+#
+# The target has no new brand: everything is Rhodochrosite now.
+
+# OmniRoute brand -> nothing (fully merged into rhodochrosite)
+word:    OmniRoute => Rhodochrosite
+word:    OMNIROUTE => RHODOCHROSITE
+word:    omniroute => rhodochrosite
+
+# VansRouter brand -> nothing (fully merged into rhodochrosite)
+word:    VansRouter => Rhodochrosite
+word:    VANSROUTER => RHODOCHROSITE
+word:    vansrouter => rhodochrosite
+
+# The repo dirs / file prefixes we introduced (windowed, word-safe)
+word:    proxy.vans => proxy
+word:    proxy.omni => proxy
+word:    omniroute. => proxy.

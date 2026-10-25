@@ -4,11 +4,11 @@
 //!
 //! Auth model: a valid client key (`Authorization: Bearer <key>`, the same
 //! key that gates `/v1/*`). Open mode (no client keys configured) admits
-//! everyone as "local". This is the Hodos management-surface contract
-//! ported onto hodos's own key store — no second user account, no session
+//! everyone as "local". This is the Rhodochrosite management-surface contract
+//! ported onto rhodochrosite's own key store — no second user account, no session
 //! cookie dance, no dashboard role required.
 //!
-//! Ported from Hodos (Next.js) 2026-10-14:
+//! Ported from Rhodochrosite (Next.js) 2026-10-14:
 //! - GET /api/health/ping  — liveness + DB reachability
 //! - GET /api/providers    — usable-provider list for client model filtering
 //! - GET /api/pricing      — per-provider per-model cost catalog
@@ -52,7 +52,7 @@ fn client_key_auth(state: &AppState, headers: &HeaderMap) -> Result<String, Resp
 					return Ok(name.clone());
 				}
 			}
-			counter!("hodos_unauthorized_total").increment(1);
+			counter!("rhodochrosite_unauthorized_total").increment(1);
 			Err(unauthorized())
 		},
 	}
@@ -80,8 +80,8 @@ pub struct HealthPingResponse {
 	pub timestamp:   String,
 	/// Milliseconds spent satisfying this request (store round-trip).
 	pub latency_ms:  u64,
-	/// Whether the persisted config store loads. Hodos's ping answers
-	/// for its database; hodos's database is the config store.
+	/// Whether the persisted config store loads. Rhodochrosite's ping answers
+	/// for its database; rhodochrosite's database is the config store.
 	pub db_ok:       bool,
 	/// Uptime in seconds.
 	pub uptime_secs: u64,
@@ -161,7 +161,7 @@ pub struct ClientProviderPrefix {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ClientProvidersResponse {
-	/// Hodos field name; tau-hodossync reads `connections`.
+	/// Rhodochrosite field name; tau-hodossync reads `connections`.
 	pub connections: Vec<ClientProviderConnection>,
 	/// Total configured providers (usable or not).
 	pub total:       usize,
@@ -242,7 +242,7 @@ pub struct PricingProviderRow {
 }
 
 /// `GET /api/pricing` — cost catalog keyed provider -> model -> pricing.
-/// hodos does not maintain a static price book: live upstream `/models`
+/// rhodochrosite does not maintain a static price book: live upstream `/models`
 /// metadata is the source, falling back to the sigma cost catalog's
 /// per-model input price where the provider lists no pricing. Local
 /// no-auth lanes report zero cost (they are free to operate).
@@ -313,12 +313,12 @@ fn name_or_401(state: &AppState, headers: &HeaderMap) -> Result<String, Response
 
 /// Price one model for one provider view. Local no-auth lanes are free;
 /// providers flagged free report zero; everything else reports the sigma
-/// catalog input price as both legs (hodos has no per-model output book).
+/// catalog input price as both legs (rhodochrosite has no per-model output book).
 fn model_row(v: &crate::router::ProviderView, _model: &str) -> ModelPricingRow {
 	if v.free || v.base_url.contains("127.0.0.1") || v.base_url.contains("localhost") {
 		return zero_pricing();
 	}
-	// No static price book in hodos: report the provider-level free flag
+	// No static price book in rhodochrosite: report the provider-level free flag
 	// and leave per-model pricing at zero rather than inventing numbers.
 	// Clients treat missing pricing as "unknown", which is honest.
 	zero_pricing()

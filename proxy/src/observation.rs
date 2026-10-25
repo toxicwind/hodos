@@ -761,7 +761,7 @@ mod tests {
 				UsageObservationMetric { field: "cached_tokens", result: "unavailable" },
 				UsageObservationMetric { field: "reasoning_tokens", result: "measured" },
 			],
-			"hodos_usage_observations_total must have only literal field/result labels"
+			"rhodochrosite_usage_observations_total must have only literal field/result labels"
 		);
 	}
 

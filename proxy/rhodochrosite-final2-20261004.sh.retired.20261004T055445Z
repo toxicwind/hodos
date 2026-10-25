@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# hodos-final2 — resume from where we stopped: only verify + apply.
+# rhodochrosite-final2 — resume from where we stopped: only verify + apply.
 set -uo pipefail
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-RUN="$HOME/.hodos-maxfix/final2-$STAMP"
+RUN="$HOME/.rhodochrosite-maxfix/final2-$STAMP"
 mkdir -p "$RUN"
 LOG="$RUN/final2.log"
 : > "$LOG"
 log(){ printf '%s\n' "$*" | tee -a "$LOG"; }
 hdr(){ log ""; log "════════════════════════════════════════════════════════════════════"; log "$*"; log "════════════════════════════════════════════════════════════════════"; }
 
-hdr "hodos-final2 $STAMP"
+hdr "rhodochrosite-final2 $STAMP"
 
 # Verify: count 8000 only on non-comment lines. A comment for our purposes
 # is any line whose first non-whitespace character is '#'. For .toml, same.
@@ -19,8 +19,8 @@ hdr "hodos-final2 $STAMP"
 hdr "verify — live 8000 refs (comments excluded)"
 ALL_CLEAN=1
 for f in \
-  "$HOME/estate/ranch/hodos/hodos-final.sh" \
-  "$HOME/estate/ranch/hodos/bin/hodos-run.sh" \
+  "$HOME/estate/ranch/rhodochrosite/rhodochrosite-final.sh" \
+  "$HOME/estate/ranch/rhodochrosite/bin/rhodochrosite-run.sh" \
   "$HOME/estate/ranch/estate-scripts-end4/dots/.bashrc.env" \
   "$HOME/estate/ranch/shell/ii/dots/.bashrc.env" \
   "$HOME/estate/migration/staged/sysd-migrate-daemons.toml" \
@@ -51,9 +51,9 @@ if [ "$ALL_CLEAN" -eq 0 ]; then
 fi
 
 # Apply.
-P="$HOME/estate/ranch/mesh/proxy/hodos-proxy/patch.sh"
-hdr "apply patch.sh --restart-hodos"
-timeout 300 bash "$P" --restart-hodos 2>&1 | tee -a "$LOG"
+P="$HOME/estate/ranch/mesh/proxy/rhodochrosite-proxy/patch.sh"
+hdr "apply patch.sh --restart-rhodochrosite"
+timeout 300 bash "$P" --restart-rhodochrosite 2>&1 | tee -a "$LOG"
 
 # :25193 confirm.
 hdr "final :25193"
@@ -61,7 +61,7 @@ PID=$(ss -tlnpH 'sport = :25193' 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1
 if [ -n "$PID" ]; then
   log "  pid=$PID exe=$(readlink -f /proc/$PID/exe)"
   H1=$(sha256sum "/proc/$PID/exe" 2>/dev/null | awk '{print $1}')
-  H2=$(sha256sum "$HOME/.hodos/hodos" 2>/dev/null | awk '{print $1}')
+  H2=$(sha256sum "$HOME/.rhodochrosite/rhodochrosite" 2>/dev/null | awk '{print $1}')
   if [ "$H1" = "$H2" ]; then log "  ✓ running == on-disk"; else log "  ✗ mismatch"; fi
 else
   log "  no listener on :25193 — check pitchfork"
@@ -76,6 +76,6 @@ grep -rln 'all_stream_providers_exhausted' "$HOME/estate/ranch" 2>/dev/null \
 hdr "DONE — $LOG"
 log ""
 log "  canonical port: 25193"
-log "  Rust hodos is the :25193 owner (pid $PID)."
+log "  Rust rhodochrosite is the :25193 owner (pid $PID)."
 log "  TS/Py/estate-scripts/cuttinggate routers are bannered DEPRECATED."
-log "  'all_stream_providers_exhausted' is TS/Python-only — never from Rust hodos."
+log "  'all_stream_providers_exhausted' is TS/Python-only — never from Rust rhodochrosite."

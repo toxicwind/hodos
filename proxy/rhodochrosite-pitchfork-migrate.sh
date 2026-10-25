@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# hodos-pitchfork-migrate.sh — retire systemd --user; restore hodos to pitchfork.
+# rhodochrosite-pitchfork-migrate.sh — retire systemd --user; restore rhodochrosite to pitchfork.
 # The estate already runs `pitchfork-bin supervisor run`. systemd was a second
 # supervisor fighting for :25193. This script:
 #   1. stops & removes the systemd unit
-#   2. merges hodos into the pitchfork daemon registry (native to the stack)
+#   2. merges rhodochrosite into the pitchfork daemon registry (native to the stack)
 #   3. hooks mise env inheritance (so ~/.secrets flows in without flattening)
-#   4. starts hodos under pitchfork, verifies :25193 + /health
-#   5. retires hodos-ctl and the systemd-era shims
+#   4. starts rhodochrosite under pitchfork, verifies :25193 + /health
+#   5. retires rhodochrosite-ctl and the systemd-era shims
 set -uo pipefail
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-RUN="$HOME/.hodos-maxfix/pitchfork-$STAMP"
+RUN="$HOME/.rhodochrosite-maxfix/pitchfork-$STAMP"
 mkdir -p "$RUN"
 LOG="$RUN/migrate.log"
 : > "$LOG"
@@ -17,15 +17,15 @@ log(){ printf '%s\n' "$*" | tee -a "$LOG"; }
 hdr(){ log ""; log "════════════════════════════════════════════════════════════════════"; log "$*"; log "════════════════════════════════════════════════════════════════════"; }
 backup(){ [ -f "$1" ] && cp -a "$1" "$1.bak.$STAMP" && log "  backup: $1.bak.$STAMP"; }
 
-hdr "hodos-pitchfork-migrate $STAMP"
+hdr "rhodochrosite-pitchfork-migrate $STAMP"
 
 # ── 1. systemd teardown ────────────────────────────────────────────────────
 hdr "1. retire systemd --user unit"
-systemctl --user stop hodos.service 2>&1 | tee -a "$LOG" || true
-systemctl --user disable hodos.service 2>&1 | tee -a "$LOG" || true
-rm -f "$HOME/.config/systemd/user/hodos.service"
+systemctl --user stop rhodochrosite.service 2>&1 | tee -a "$LOG" || true
+systemctl --user disable rhodochrosite.service 2>&1 | tee -a "$LOG" || true
+rm -f "$HOME/.config/systemd/user/rhodochrosite.service"
 systemctl --user daemon-reload 2>&1 | tee -a "$LOG" || true
-systemctl --user reset-failed hodos.service 2>&1 | tee -a "$LOG" || true
+systemctl --user reset-failed rhodochrosite.service 2>&1 | tee -a "$LOG" || true
 log "  systemd unit removed"
 ss -tlnpH 'sport = :25193' 2>/dev/null | tee -a "$LOG" || log "  :25193 dark (expected)"
 
@@ -46,8 +46,8 @@ mapfile -t PFCFG < <(
 )
 log "  candidates:"
 for f in "${PFCFG[@]}"; do
-  n=$(grep -c 'hodos' "$f" 2>/dev/null | head -1); n=${n:-0}
-  log "    $f   (hodos refs: $n)"
+  n=$(grep -c 'rhodochrosite' "$f" 2>/dev/null | head -1); n=${n:-0}
+  log "    $f   (rhodochrosite refs: $n)"
 done
 
 # Primary target: the pitchfork.toml with a daemon-list array, at estate root
@@ -64,8 +64,8 @@ done
 log "  primary:   $PRIMARY"
 backup "$PRIMARY"
 
-# ── 4. merge hodos daemon entry ────────────────────────────────────────────
-hdr "4. merge [daemons.hodos] into $PRIMARY"
+# ── 4. merge rhodochrosite daemon entry ────────────────────────────────────────────
+hdr "4. merge [daemons.rhodochrosite] into $PRIMARY"
 python3 - "$PRIMARY" "$HOME" <<'PYEOF' | tee -a "$LOG"
 import sys, pathlib, re
 toml_path = pathlib.Path(sys.argv[1])
@@ -77,7 +77,7 @@ if not toml_path.exists():
 
 s = toml_path.read_text()
 
-# 4a. ensure hodos is in the top-level `daemons = [...]` array, if such an array exists.
+# 4a. ensure rhodochrosite is in the top-level `daemons = [...]` array, if such an array exists.
 def ensure_in_array(text, name):
     m = re.search(r'(?m)^daemons\s*=\s*\[([^\]]*)\]', text)
     if not m:
@@ -91,20 +91,20 @@ def ensure_in_array(text, name):
     new = f'daemons = [{new_body}]'
     return text[:m.start()] + new + text[m.end():], True
 
-s, added = ensure_in_array(s, "hodos")
-if added: print(f"  + added 'hodos' to daemons array")
+s, added = ensure_in_array(s, "rhodochrosite")
+if added: print(f"  + added 'rhodochrosite' to daemons array")
 
-# 4b. remove any existing [daemons.hodos] section (replace wholesale).
-# Match from `[daemons.hodos]` to next top-level `[` or EOF.
-s = re.sub(r'(?ms)^\[daemons\.hodos\]\s*\n.*?(?=^\[|\Z)', '', s)
+# 4b. remove any existing [daemons.rhodochrosite] section (replace wholesale).
+# Match from `[daemons.rhodochrosite]` to next top-level `[` or EOF.
+s = re.sub(r'(?ms)^\[daemons\.rhodochrosite\]\s*\n.*?(?=^\[|\Z)', '', s)
 
-# 4c. append the canonical [daemons.hodos] block.
+# 4c. append the canonical [daemons.rhodochrosite] block.
 block = f'''
-[daemons.hodos]
-# managed by pitchfork (mise-native). systemd unit retired {pathlib.Path.home()}/.config/systemd/user/hodos.service
-run = "exec {home}/.hodos/hodos"
-cwd = "{home}/estate/ranch/hodos"
-env = {{ HOST = "127.0.0.1", PORT = "25193", FLOCK_PORT = "25193", DATA_DIR = "{home}/.hodos-data", FLOCK_DATA_DIR = "{home}/.hodos-data", FLOCK_ASTMATRIX_DB = "{home}/estate/data/ast_matrix.db", RUST_LOG = "info" }}
+[daemons.rhodochrosite]
+# managed by pitchfork (mise-native). systemd unit retired {pathlib.Path.home()}/.config/systemd/user/rhodochrosite.service
+run = "exec {home}/.rhodochrosite/rhodochrosite"
+cwd = "{home}/estate/ranch/rhodochrosite"
+env = {{ HOST = "127.0.0.1", PORT = "25193", FLOCK_PORT = "25193", DATA_DIR = "{home}/.rhodochrosite-data", FLOCK_DATA_DIR = "{home}/.rhodochrosite-data", FLOCK_ASTMATRIX_DB = "{home}/estate/data/ast_matrix.db", RUST_LOG = "info" }}
 port = 25193
 ready_http = "http://127.0.0.1:25193/health"
 ready_timeout = "60s"
@@ -112,13 +112,13 @@ retry = 5
 retry_delay = "2s"
 stop_signal = "SIGTERM"
 stop_timeout = "15s"
-watch = ["{home}/.hodos/hodos"]
+watch = ["{home}/.rhodochrosite/rhodochrosite"]
 watch_mode = "poll"
 '''.lstrip("\n")
 if not s.endswith("\n"): s += "\n"
 s += "\n" + block
 toml_path.write_text(s)
-print(f"  wrote [daemons.hodos] block")
+print(f"  wrote [daemons.rhodochrosite] block")
 PYEOF
 
 # ── 5. mise env inheritance ────────────────────────────────────────────────
@@ -135,7 +135,7 @@ if not mp.exists():
 s = mp.read_text()
 need = [
   f'{home}/.secrets',
-  f'{home}/estate/config/hodos-ssot/hodos.env',
+  f'{home}/estate/config/rhodochrosite-ssot/rhodochrosite.env',
 ]
 if "[env]" not in s:
     s += "\n[env]\n"
@@ -162,15 +162,15 @@ if m:
 mp.write_text(s)
 PYEOF
 
-# ── 6. reload pitchfork / start hodos ──────────────────────────────────────
+# ── 6. reload pitchfork / start rhodochrosite ──────────────────────────────────────
 hdr "6. reload pitchfork"
 # Try mise daemons first (native), else pitchfork directly.
 if "$MISE" daemons --help >/dev/null 2>&1; then
   "$MISE" daemons reload 2>&1 | tee -a "$LOG" || "$MISE" daemons register 2>&1 | tee -a "$LOG" || true
-  "$MISE" daemons start hodos 2>&1 | tee -a "$LOG" || true
+  "$MISE" daemons start rhodochrosite 2>&1 | tee -a "$LOG" || true
 else
   "$PITCHFORK" reload 2>&1 | tee -a "$LOG" || true
-  "$PITCHFORK" start hodos 2>&1 | tee -a "$LOG" || "$PITCHFORK" start estate/hodos 2>&1 | tee -a "$LOG" || true
+  "$PITCHFORK" start rhodochrosite 2>&1 | tee -a "$LOG" || "$PITCHFORK" start estate/rhodochrosite 2>&1 | tee -a "$LOG" || true
 fi
 
 # ── 7. readiness ───────────────────────────────────────────────────────────
@@ -185,18 +185,18 @@ done
 if [ "$ok" -ne 1 ]; then
   log "  ✗ not ready — dumping pitchfork status:"
   if "$MISE" daemons --help >/dev/null 2>&1; then
-    "$MISE" daemons status hodos 2>&1 | tee -a "$LOG" || true
-    "$MISE" daemons logs hodos 2>&1 | tail -80 | tee -a "$LOG" || true
+    "$MISE" daemons status rhodochrosite 2>&1 | tee -a "$LOG" || true
+    "$MISE" daemons logs rhodochrosite 2>&1 | tail -80 | tee -a "$LOG" || true
   else
     "$PITCHFORK" status 2>&1 | tee -a "$LOG" || true
-    "$PITCHFORK" logs estate/hodos 2>&1 | tail -80 | tee -a "$LOG" || true
+    "$PITCHFORK" logs estate/rhodochrosite 2>&1 | tail -80 | tee -a "$LOG" || true
   fi
   exit 1
 fi
 
 # ── 8. probe ───────────────────────────────────────────────────────────────
 hdr "8. probe"
-KEY=$(grep -m1 '^FLOCK_API_KEY=' "$HOME/estate/config/hodos-ssot/hodos.env" 2>/dev/null | cut -d= -f2- || true)
+KEY=$(grep -m1 '^FLOCK_API_KEY=' "$HOME/estate/config/rhodochrosite-ssot/rhodochrosite.env" 2>/dev/null | cut -d= -f2- || true)
 log "  key prefix: ${KEY:0:14}…"
 curl -sS -i --max-time 5 http://127.0.0.1:25193/health 2>&1 | tee -a "$LOG"
 log ""
@@ -204,12 +204,12 @@ log "  /v1/models:"
 curl -sS -i --max-time 10 -H "Authorization: Bearer $KEY" \
   http://127.0.0.1:25193/v1/models 2>&1 | head -20 | tee -a "$LOG"
 
-# ── 9. retire hodos-ctl and systemd-era artifacts ─────────────────────────
-hdr "9. retire hodos-ctl + systemd-era shims"
+# ── 9. retire rhodochrosite-ctl and systemd-era artifacts ─────────────────────────
+hdr "9. retire rhodochrosite-ctl + systemd-era shims"
 for f in \
-  "$HOME/.local/bin/hodos-ctl" \
-  "$HOME/.hodos/hodos-launch.sh" \
-  "$HOME/estate/config/hodos-ssot/hodos.env" \
+  "$HOME/.local/bin/rhodochrosite-ctl" \
+  "$HOME/.rhodochrosite/rhodochrosite-launch.sh" \
+  "$HOME/estate/config/rhodochrosite-ssot/rhodochrosite.env" \
 ; do
   [ -e "$f" ] || continue
   mv "$f" "$f.retired.$STAMP" 2>/dev/null || true
@@ -220,7 +220,7 @@ done
 hdr "10. CANONICAL STATE"
 PID=$(ss -tlnpH 'sport = :25193' 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)
 H1=$(sha256sum "/proc/$PID/exe" 2>/dev/null | awk '{print $1}')
-H2=$(sha256sum "$HOME/.hodos/hodos" 2>/dev/null | awk '{print $1}')
+H2=$(sha256sum "$HOME/.rhodochrosite/rhodochrosite" 2>/dev/null | awk '{print $1}')
 log "  :25193 owner:  pid=$PID"
 log "  running hash:  $H1"
 log "  on-disk hash:  $H2"
@@ -231,10 +231,10 @@ log "  mise env:        $MISE_TOML"
 log "  systemd unit:    removed"
 log ""
 log "  daily ops (pitchfork-native):"
-log "    mise daemons status hodos"
-log "    mise daemons restart hodos"
-log "    mise daemons logs hodos --tail"
-log "    mise daemons stop hodos"
+log "    mise daemons status rhodochrosite"
+log "    mise daemons restart rhodochrosite"
+log "    mise daemons logs rhodochrosite --tail"
+log "    mise daemons stop rhodochrosite"
 log ""
 log "  no SIGHUP, no systemctl, no ExecReload trap."
 log "  pitchfork supervisor owns the lifecycle, exactly like the other 50 daemons."

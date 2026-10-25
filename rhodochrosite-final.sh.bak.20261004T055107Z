@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════
-# hodos-final.sh — install, run, and wire hodos into your stack
+# rhodochrosite-final.sh — install, run, and wire rhodochrosite into your stack
 # ═══════════════════════════════════════════════════════════════════════════
-# Hodos is the rate-limit-aware NVIDIA NIM proxy (multi-key load balancing).
+# Rhodochrosite is the rate-limit-aware NVIDIA NIM proxy (multi-key load balancing).
 # Successor to nim-proxy-final.sh: same behavior, final naming.
 #
 # Usage:
-#   ./hodos-final.sh                 interactive (prompts for the client key)
-#   HODOS_KEY=hodos_... ./hodos-final.sh
+#   ./rhodochrosite-final.sh                 interactive (prompts for the client key)
+#   RHODOCHROSITE_KEY=rhodochrosite_... ./rhodochrosite-final.sh
 #                                    non-interactive (key from env, never echoed)
-#   ./hodos-final.sh --dry-run       print what would happen, change nothing
+#   ./rhodochrosite-final.sh --dry-run       print what would happen, change nothing
 #
 # Non-destructive: never deletes data, keys, containers, or configs.
 # Legacy artifacts are reported and stopped, not removed.
@@ -22,9 +22,9 @@ fi
 
 PROXY_URL="http://127.0.0.1:8000/v1"
 WIZARD_URL="http://127.0.0.1:8000/"
-REPO="${HODOS_REPO:-$HOME/projects/hodos}"
-BIN_DST="$HOME/.hodos/hodos"
-DATA_DIR="$HOME/.hodos-data"
+REPO="${RHODOCHROSITE_REPO:-$HOME/projects/rhodochrosite}"
+BIN_DST="$HOME/.rhodochrosite/rhodochrosite"
+DATA_DIR="$HOME/.rhodochrosite-data"
 PITCHFORK_TOML="$HOME/projects/estate-scripts-projects/pitchfork.toml"
 ENGINE="$HOME/projects/estate-scripts-projects/tau/engine"
 
@@ -48,7 +48,7 @@ wait_for() { # wait_for <url> — poll until HTTP 200/302/503 or 60 tries
 }
 
 echo "╔═══════════════════════════════════════════════════════════════╗"
-echo "║  hodos — rate-limit-aware NVIDIA NIM proxy                    ║"
+echo "║  rhodochrosite — rate-limit-aware NVIDIA NIM proxy                    ║"
 echo "╚═══════════════════════════════════════════════════════════════╝"
 echo
 [[ "$DRY_RUN" == 1 ]] && echo "  DRY RUN — no changes will be made." && echo
@@ -73,56 +73,56 @@ if [[ -x "$HOME/.nim-proxy/nim-proxy" ]]; then
   say "NOTE: legacy $HOME/.nim-proxy/nim-proxy left untouched (archive, not active)."
 fi
 
-# ─── Step 2: build + install the hodos binary ─────────────────────────
+# ─── Step 2: build + install the rhodochrosite binary ─────────────────────────
 if [[ ! -d "$REPO/proxy" ]]; then
-  say "FATAL: hodos source not found at $REPO (set HODOS_REPO=...)."
+  say "FATAL: rhodochrosite source not found at $REPO (set RHODOCHROSITE_REPO=...)."
   exit 1
 fi
-say "Building hodos (release)..."
+say "Building rhodochrosite (release)..."
 run "( cd \"$REPO/proxy\" && cargo build --release 2>&1 | tail -3 )"
 run "mkdir -p \"\$(dirname \"$BIN_DST\")\" \"$DATA_DIR\""
-run "cp \"$REPO/proxy/target/release/hodos\" \"$BIN_DST\" && chmod +x \"$BIN_DST\""
+run "cp \"$REPO/proxy/target/release/rhodochrosite\" \"$BIN_DST\" && chmod +x \"$BIN_DST\""
 say "Installed: $BIN_DST"
 
 # ─── Step 3: daemon (pitchfork stanza if managed, else direct) ────────
 if command -v pitchfork >/dev/null 2>&1 && [[ -f "$PITCHFORK_TOML" ]]; then
-  if grep -q '^\[daemons\.hodos\]' "$PITCHFORK_TOML" 2>/dev/null; then
+  if grep -q '^\[daemons\.rhodochrosite\]' "$PITCHFORK_TOML" 2>/dev/null; then
     say "pitchfork stanza: present"
   else
     say "Adding pitchfork stanza..."
     if [[ "$DRY_RUN" == 1 ]]; then
-      dry "append [daemons.hodos] to $PITCHFORK_TOML"
+      dry "append [daemons.rhodochrosite] to $PITCHFORK_TOML"
     else
       cat >> "$PITCHFORK_TOML" <<TOML
 
-[daemons.hodos]
+[daemons.rhodochrosite]
 run = "exec env HOST=127.0.0.1 PORT=8000 DATA_DIR=$DATA_DIR $BIN_DST"
 dir = "."
 mise = false
 retry = true
 ready_cmd = "ss -ltn 'sport = :8000' | grep -q LISTEN"
-env = { HODOS_PORT = "8000" }
+env = { RHODOCHROSITE_PORT = "8000" }
 auto = ["start"]
 TOML
       say "pitchfork stanza: added"
     fi
   fi
-  run "pitchfork start hodos 2>&1 | tail -2 || true"
+  run "pitchfork start rhodochrosite 2>&1 | tail -2 || true"
 else
-  say "pitchfork not managing hodos here; starting directly if :8000 is free..."
+  say "pitchfork not managing rhodochrosite here; starting directly if :8000 is free..."
   if ! ss -ltn 'sport = :8000' 2>/dev/null | grep -q LISTEN; then
-    run "setsid nohup env HOST=127.0.0.1 PORT=8000 DATA_DIR=\"$DATA_DIR\" \"$BIN_DST\" >> \"$DATA_DIR/hodos.log\" 2>&1 < /dev/null &"
+    run "setsid nohup env HOST=127.0.0.1 PORT=8000 DATA_DIR=\"$DATA_DIR\" \"$BIN_DST\" >> \"$DATA_DIR/rhodochrosite.log\" 2>&1 < /dev/null &"
   else
     say ":8000 already listening — leaving the running daemon alone."
   fi
 fi
 
 # ─── Step 4: wait for readiness (poll, no blind sleeps) ───────────────
-say "Waiting for hodos to come up..."
+say "Waiting for rhodochrosite to come up..."
 if code=$(wait_for "$WIZARD_URL"); then
-  say "Hodos is up (HTTP $code)"
+  say "Rhodochrosite is up (HTTP $code)"
 else
-  say "FATAL: hodos did not come up. Check: tail $DATA_DIR/hodos.log"
+  say "FATAL: rhodochrosite did not come up. Check: tail $DATA_DIR/rhodochrosite.log"
   exit 1
 fi
 
@@ -136,33 +136,33 @@ say "1. Open in a browser:  $WIZARD_URL"
 say "2. Create the superuser account (first visitor becomes superuser)"
 say "3. Add your NIM API key(s) — paste each nvapi-… key, comma-separated"
 say "   for multiple keys (each key adds 40 RPM)"
-say "4. The wizard mints your first client key (hodos_…) — COPY IT"
+say "4. The wizard mints your first client key (rhodochrosite_…) — COPY IT"
 echo
 say "When the wizard finishes, return here and paste the client key."
 echo
 
-HODOS_KEY="${HODOS_KEY:-}"
-if [[ -z "$HODOS_KEY" && "$DRY_RUN" == 0 ]]; then
-  read -rp "  Paste client key: " HODOS_KEY
+RHODOCHROSITE_KEY="${RHODOCHROSITE_KEY:-}"
+if [[ -z "$RHODOCHROSITE_KEY" && "$DRY_RUN" == 0 ]]; then
+  read -rp "  Paste client key: " RHODOCHROSITE_KEY
 fi
 
-if [[ -z "$HODOS_KEY" ]]; then
+if [[ -z "$RHODOCHROSITE_KEY" ]]; then
   [[ "$DRY_RUN" == 1 ]] && say "(dry-run: skipping key prompt)" || { say "Empty key. Aborting."; exit 1; }
 fi
 
 # ─── Step 6: test the proxy with the client key ───────────────────────
-if [[ -n "$HODOS_KEY" ]]; then
+if [[ -n "$RHODOCHROSITE_KEY" ]]; then
   echo
-  say "Testing hodos with your key..."
+  say "Testing rhodochrosite with your key..."
   resp=$(curl -s -X POST "${PROXY_URL}/chat/completions" \
-    -H "Authorization: Bearer ${HODOS_KEY}" \
+    -H "Authorization: Bearer ${RHODOCHROSITE_KEY}" \
     -H "Content-Type: application/json" \
-    -d '{"model":"nvidia/nemotron-3-super-120b-a12b","messages":[{"role":"user","content":"reply only: HODOS_OK"}],"max_tokens":10}' 2>&1)
+    -d '{"model":"nvidia/nemotron-3-super-120b-a12b","messages":[{"role":"user","content":"reply only: RHODOCHROSITE_OK"}],"max_tokens":10}' 2>&1)
 
-  if echo "$resp" | grep -q "HODOS_OK"; then
-    say "✓ Hodos works — model replied HODOS_OK"
+  if echo "$resp" | grep -q "RHODOCHROSITE_OK"; then
+    say "✓ Rhodochrosite works — model replied RHODOCHROSITE_OK"
   elif echo "$resp" | grep -q '"error"'; then
-    say "✗ Hodos returned error:"
+    say "✗ Rhodochrosite returned error:"
     echo "$resp" | head -c 500
     echo
     say "Aborting. Check daemon logs."
@@ -173,18 +173,18 @@ if [[ -n "$HODOS_KEY" ]]; then
   fi
 fi
 
-# ─── Step 7: wire everything to hodos ─────────────────────────────────
+# ─── Step 7: wire everything to rhodochrosite ─────────────────────────────────
 echo
-say "Wiring stack to hodos..."
+say "Wiring stack to rhodochrosite..."
 
-# 7a. Append hodos vars to ~/.secrets (idempotent; key never echoed)
-if [[ -n "$HODOS_KEY" ]]; then
-  HODOS_KEY="$HODOS_KEY" DRY_RUN="$DRY_RUN" python3 <<'PYEOF'
+# 7a. Append rhodochrosite vars to ~/.secrets (idempotent; key never echoed)
+if [[ -n "$RHODOCHROSITE_KEY" ]]; then
+  RHODOCHROSITE_KEY="$RHODOCHROSITE_KEY" DRY_RUN="$DRY_RUN" python3 <<'PYEOF'
 import os
 from pathlib import Path
 
 dry = os.environ.get("DRY_RUN") == "1"
-key = os.environ["HODOS_KEY"]
+key = os.environ["RHODOCHROSITE_KEY"]
 s = Path.home() / ".secrets"
 text = s.read_text() if s.exists() else ""
 lines = text.splitlines()
@@ -194,12 +194,12 @@ for line in lines:
     ls = line.strip()
     if ls in ("# ─── nim-proxy (rate-limit-aware) ───",
               "# ─── nim-proxy client key ───",
-              "# ─── hodos (rate-limit-aware) ───",
-              "# ─── hodos client key ───"):
+              "# ─── rhodochrosite (rate-limit-aware) ───",
+              "# ─── rhodochrosite client key ───"):
         skip = True
         continue
     if skip and line.startswith("export ") and any(
-        k in line for k in ("PROXY", "HODOS", "NVIDIA", "ANTHROPIC")
+        k in line for k in ("PROXY", "RHODOCHROSITE", "NVIDIA", "ANTHROPIC")
     ):
         continue
     if skip and ls == "":
@@ -208,9 +208,9 @@ for line in lines:
         keep.append(line)
 
 block = f"""
-# ─── hodos (rate-limit-aware) ───
-export HODOS_URL="http://127.0.0.1:8000/v1"
-export HODOS_API_KEY="{key}"
+# ─── rhodochrosite (rate-limit-aware) ───
+export RHODOCHROSITE_URL="http://127.0.0.1:8000/v1"
+export RHODOCHROSITE_API_KEY="{key}"
 # compat aliases for tools that still read the old names
 export NIM_PROXY_URL="http://127.0.0.1:8000/v1"
 export NIM_PROXY_API_KEY="{key}"
@@ -230,24 +230,24 @@ else:
 PYEOF
 fi
 
-# 7b. OpenCode config pointing at hodos
-if [[ -n "$HODOS_KEY" ]]; then
+# 7b. OpenCode config pointing at rhodochrosite
+if [[ -n "$RHODOCHROSITE_KEY" ]]; then
   mkdir -p ~/.config/opencode
-  HODOS_KEY="$HODOS_KEY" DRY_RUN="$DRY_RUN" python3 <<'PYEOF'
+  RHODOCHROSITE_KEY="$RHODOCHROSITE_KEY" DRY_RUN="$DRY_RUN" python3 <<'PYEOF'
 import json, os
 from pathlib import Path
 
 dry = os.environ.get("DRY_RUN") == "1"
 cfg = {
   "$schema": "https://opencode.ai/config.json",
-  "model": "hodos/nvidia/nemotron-3-super-120b-a12b",
+  "model": "rhodochrosite/nvidia/nemotron-3-super-120b-a12b",
   "provider": {
-    "hodos": {
+    "rhodochrosite": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "NVIDIA NIM (via hodos)",
+      "name": "NVIDIA NIM (via rhodochrosite)",
       "options": {
         "baseURL": "http://127.0.0.1:8000/v1",
-        "apiKey": os.environ["HODOS_KEY"],
+        "apiKey": os.environ["RHODOCHROSITE_KEY"],
         "timeout": False,
       },
       "models": {
@@ -267,10 +267,10 @@ else:
 PYEOF
 fi
 
-# 7c. Nanocoder config pointing at hodos
-if [[ -n "$HODOS_KEY" ]]; then
+# 7c. Nanocoder config pointing at rhodochrosite
+if [[ -n "$RHODOCHROSITE_KEY" ]]; then
   mkdir -p ~/.config/nanocoder
-  HODOS_KEY="$HODOS_KEY" DRY_RUN="$DRY_RUN" python3 <<'PYEOF'
+  RHODOCHROSITE_KEY="$RHODOCHROSITE_KEY" DRY_RUN="$DRY_RUN" python3 <<'PYEOF'
 import json, os
 from pathlib import Path
 
@@ -279,7 +279,7 @@ cfg = {
   "providers": [{
     "name": "nvidia",
     "baseUrl": "http://127.0.0.1:8000/v1",
-    "apiKey": os.environ["HODOS_KEY"],
+    "apiKey": os.environ["RHODOCHROSITE_KEY"],
     "models": [
       "nvidia/nemotron-3-super-120b-a12b",
       "nvidia/nemotron-3-ultra-550b-a55b",
@@ -297,7 +297,7 @@ PYEOF
 fi
 
 # 7d. Sync OpenCode config to the tau engine workspace
-if [[ -d "$ENGINE/.agent" && -n "$HODOS_KEY" && "$DRY_RUN" == 0 ]]; then
+if [[ -d "$ENGINE/.agent" && -n "$RHODOCHROSITE_KEY" && "$DRY_RUN" == 0 ]]; then
   cp ~/.config/opencode/opencode.json "$ENGINE/.agent/opencode.json" 2>/dev/null || true
   say "✓ synced to $ENGINE/.agent/"
 fi
@@ -309,7 +309,7 @@ echo "║  DONE                                                         ║"
 echo "╚═══════════════════════════════════════════════════════════════╝"
 echo
 say "Binary:     $BIN_DST"
-say "Daemon:     :8000 (pitchfork 'hodos' when managed)"
+say "Daemon:     :8000 (pitchfork 'rhodochrosite' when managed)"
 say "Dashboard:  $WIZARD_URL"
 say "API:        $PROXY_URL"
 echo

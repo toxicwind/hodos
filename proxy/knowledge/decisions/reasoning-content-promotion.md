@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: Promote reasoning text into empty content on buffered chat completions
-description: When a buffered chat-completion choice has empty/null content but non-blank reasoning_content or reasoning, the proxy fills content with that text on the wire (config-gated, on by default). This is the master fix for the 2026-10-19 empty-response disease: per-caller extraction fallbacks are whack-a-mole; normalization belongs in hodos.
+description: When a buffered chat-completion choice has empty/null content but non-blank reasoning_content or reasoning, the proxy fills content with that text on the wire (config-gated, on by default). This is the master fix for the 2026-10-19 empty-response disease: per-caller extraction fallbacks are whack-a-mole; normalization belongs in rhodochrosite.
 tags: [wire-format, reasoning-content, empty-response, chat-completions]
 timestamp: 2026-10-19T00:00:00Z
 ---
@@ -17,7 +17,7 @@ Clients that read only `content` see an empty completion — the "empty-response
 disease" (2026-10-19). Per-caller patches (`bidder.py`/`oracle_ask.py`
 extraction fallbacks `5d0d9de`, corral `nimProxy` `c9710c1`, react-loop
 bounded reads) are whack-a-mole: every consumer must independently
-re-discover the extraction. The normalization belongs on the wire, in hodos,
+re-discover the extraction. The normalization belongs on the wire, in rhodochrosite,
 once.
 
 The proxy already inspects buffered chat-completion bodies: the
@@ -28,7 +28,7 @@ completion. But the body passed through with `content: null` untouched, so
 
 ## Options
 
-1. **Do nothing in hodos** — keep pushing per-caller extraction fallbacks.
+1. **Do nothing in rhodochrosite** — keep pushing per-caller extraction fallbacks.
    Every new caller re-discovers the disease; the wire keeps lying.
 2. **Promote on the wire, buffered path** — when a buffered chat-completion
    choice has blank/null `content` and non-blank `reasoning_content` (or

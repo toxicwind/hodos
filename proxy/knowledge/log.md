@@ -13,7 +13,7 @@ Buffered chat completions with empty/null `content` but non-blank
 proxy wire (config-gated `limits.promote_reasoning_content`, default ON).
 Master fix for the empty-response disease: per-caller fallbacks
 (bidder, corral nimProxy, react-loop) are whack-a-mole; normalization
-belongs in hodos. Streaming SSE stays zero-copy passthrough by design.
+belongs in rhodochrosite. Streaming SSE stays zero-copy passthrough by design.
 Decision page: knowledge/decisions/reasoning-content-promotion.md.
 
 ## [2026-08-24] maintenance — reconcile governing documentation

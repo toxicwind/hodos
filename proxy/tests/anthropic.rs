@@ -3,7 +3,7 @@
 //! Red→green: these fail without `src/anthropic.rs` (no translation
 //! functions, no `/v1/messages` route) and pass once the shim is wired.
 
-use hodos::anthropic::{SseTranslator, translate_request, translate_response};
+use rhodochrosite::anthropic::{SseTranslator, translate_request, translate_response};
 use serde_json::{Value, json};
 
 #[test]

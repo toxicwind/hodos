@@ -4,5 +4,5 @@
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    hodos::fuzz_proxy::sse_scan(data);
+    rhodochrosite::fuzz_proxy::sse_scan(data);
 });

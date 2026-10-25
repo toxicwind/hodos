@@ -1,4 +1,4 @@
-//! Provider model — Hodos's multi-provider core.
+//! Provider model — Rhodochrosite's multi-provider core.
 //!
 //! This module genuinely absorbs AstMatrix's provider registry: its 13
 //! built-in provider definitions, model lists, ELO scores, weights, free-tier
@@ -496,11 +496,11 @@ impl ProviderSet {
 /// environment variables, model lists, weights, and ELO seeds — exactly as
 /// `providers.go` declares them. Key material is never stored here; each
 /// entry names the env var AstMatrix resolved.
-/// Hodos's hand-maintained operational overlay on top of Roost's wire data.
+/// Rhodochrosite's hand-maintained operational overlay on top of Roost's wire data.
 ///
 /// Roost (`crate::roost_providers`) is the authority for wire fields: base
 /// URLs, key env vars, auth schemes, cold-start seeds. This overlay decides
-/// WHICH Roost providers hodos serves and carries hodos's operational tuning:
+/// WHICH Roost providers rhodochrosite serves and carries rhodochrosite's operational tuning:
 /// ELO/weight seeds, free-tier flags, model maps, RPM defaults, display
 /// names. Values are carried verbatim from the pre-Roost hardcoded defaults;
 /// do not retune here — retuning is a deliberate separate change.
@@ -514,9 +514,9 @@ struct ProviderOverlay {
 	model_map:    &'static [(&'static str, &'static str)],
 }
 
-/// The 9 providers hodos serves, in registry order. `display_name` is the
+/// The 9 providers rhodochrosite serves, in registry order. `display_name` is the
 /// bare provider name (verbatim from the old hardcoded defaults).
-const HODOS_PROVIDER_OVERLAY: &[ProviderOverlay] = &[
+const RHODOCHROSITE_PROVIDER_OVERLAY: &[ProviderOverlay] = &[
 	ProviderOverlay {
 		name:         "nvidia",
 		elo:          1550,
@@ -593,7 +593,7 @@ const HODOS_PROVIDER_OVERLAY: &[ProviderOverlay] = &[
 		// EAP Gemini. keypool (:25109) injects the credential and translates
 		// OpenAI bodies onto the Interactions API, so the provider itself is
 		// keyless (auth: none in the Roost table). Without this overlay entry
-		// hodos never advertised the provider, so tau could not reach the
+		// rhodochrosite never advertised the provider, so tau could not reach the
 		// only project that holds the EAP entitlement.
 		name:         "google",
 		elo:          1600,
@@ -605,8 +605,8 @@ const HODOS_PROVIDER_OVERLAY: &[ProviderOverlay] = &[
 	},
 ];
 
-/// Hodos's provider registry, built from Roost's wire data merged with the
-/// hand-maintained [`HODOS_PROVIDER_OVERLAY`].
+/// Rhodochrosite's provider registry, built from Roost's wire data merged with the
+/// hand-maintained [`RHODOCHROSITE_PROVIDER_OVERLAY`].
 ///
 /// This is on the live serving path: `config.rs::migrate_v1()` calls it on
 /// every boot (the on-disk config is v1 with no providers field), so what
@@ -618,18 +618,18 @@ const HODOS_PROVIDER_OVERLAY: &[ProviderOverlay] = &[
 pub fn default_providers() -> Vec<ProviderDef> {
 	use crate::roost_providers as roost;
 	let dead: std::collections::HashSet<&str> = roost::ROOST_DEAD_IDS.iter().copied().collect();
-	let mut v = Vec::with_capacity(HODOS_PROVIDER_OVERLAY.len());
-	for ov in HODOS_PROVIDER_OVERLAY {
+	let mut v = Vec::with_capacity(RHODOCHROSITE_PROVIDER_OVERLAY.len());
+	for ov in RHODOCHROSITE_PROVIDER_OVERLAY {
 		let t = roost::ROOST_PROVIDERS
 			.iter()
 			.find(|p| p.name == ov.name)
 			.unwrap_or_else(|| panic!("overlay references unknown Roost provider: {}", ov.name));
 		assert!(
 			!t.router_local,
-			"hodos overlay must not include router-local Roost provider {}",
+			"rhodochrosite overlay must not include router-local Roost provider {}",
 			ov.name
 		);
-		assert!(t.enabled, "hodos overlay includes disabled Roost provider {}", ov.name);
+		assert!(t.enabled, "rhodochrosite overlay includes disabled Roost provider {}", ov.name);
 		let mut keys = vec![ProviderKey { key_env: t.key_env.to_string(), ..ProviderKey::default() }];
 		if !t.key_env_alt.is_empty() {
 			// Roost's multi-key semantic (e.g. NVIDIA_API_KEYS): the alt var
@@ -784,19 +784,19 @@ mod tests {
 
 	#[test]
 	fn key_resolution_prefers_literal_then_env() {
-		std::env::set_var("HODOS_TEST_KEY_ENV_X", "env-secret");
+		std::env::set_var("RHODOCHROSITE_TEST_KEY_ENV_X", "env-secret");
 		let k = ProviderKey {
 			key: "literal".into(),
-			key_env: "HODOS_TEST_KEY_ENV_X".into(),
+			key_env: "RHODOCHROSITE_TEST_KEY_ENV_X".into(),
 			..ProviderKey::default()
 		};
 		assert_eq!(resolve_key_material(&k).as_deref(), Some("literal"));
-		let k2 = ProviderKey { key_env: "HODOS_TEST_KEY_ENV_X".into(), ..ProviderKey::default() };
+		let k2 = ProviderKey { key_env: "RHODOCHROSITE_TEST_KEY_ENV_X".into(), ..ProviderKey::default() };
 		assert_eq!(resolve_key_material(&k2).as_deref(), Some("env-secret"));
 		let k3 =
-			ProviderKey { key_env: "HODOS_TEST_KEY_ENV_MISSING".into(), ..ProviderKey::default() };
+			ProviderKey { key_env: "RHODOCHROSITE_TEST_KEY_ENV_MISSING".into(), ..ProviderKey::default() };
 		assert_eq!(resolve_key_material(&k3), None);
-		std::env::remove_var("HODOS_TEST_KEY_ENV_X");
+		std::env::remove_var("RHODOCHROSITE_TEST_KEY_ENV_X");
 	}
 
 	#[test]
@@ -872,8 +872,8 @@ mod tests {
 	#[test]
 	fn builtin_defaults_match_roost() {
 		// Roost-derived expectations: wire fields (base_url, key_env, seeds)
-		// come from hodos/roost/generated/providers.rs; operational tuning
-		// (elo/weight/free_tier) comes from HODOS_PROVIDER_OVERLAY verbatim.
+		// come from rhodochrosite/roost/generated/providers.rs; operational tuning
+		// (elo/weight/free_tier) comes from RHODOCHROSITE_PROVIDER_OVERLAY verbatim.
 		use crate::roost_providers as roost;
 		let defs = default_providers();
 		let by_name = |n: &str| defs.iter().find(|p| p.name == n).unwrap();
@@ -882,14 +882,14 @@ mod tests {
 
 		// Every overlay entry resolves in Roost, is enabled, and is not
 		// router-local.
-		for ov in HODOS_PROVIDER_OVERLAY {
+		for ov in RHODOCHROSITE_PROVIDER_OVERLAY {
 			let t = roost_by_name(ov.name);
 			assert!(t.enabled, "{} disabled in Roost", ov.name);
 			assert!(!t.router_local, "{} is router-local", ov.name);
 		}
 
 		// Wire fields match Roost exactly.
-		for ov in HODOS_PROVIDER_OVERLAY {
+		for ov in RHODOCHROSITE_PROVIDER_OVERLAY {
 			let d = by_name(ov.name);
 			let t = roost_by_name(ov.name);
 			assert_eq!(d.base_url, t.base_url, "{} base_url", ov.name);
@@ -949,9 +949,9 @@ mod tests {
 
 	#[test]
 	fn roost_providers_copy_in_sync() {
-		// mesh/proxy/hodos-proxy/src/roost_providers.rs must be byte-identical to
+		// mesh/proxy/rhodochrosite-proxy/src/roost_providers.rs must be byte-identical to
 		// pinax/generated/providers.rs modulo the Generated-at stamp.
-		// Regenerate with: bun ../../../hodos/scripts/sync-roost-providers.ts
+		// Regenerate with: bun ../../../rhodochrosite/scripts/sync-roost-providers.ts
 		// --write
 		let generated = include_str!("../../../pinax/generated/providers.rs");
 		let copy = include_str!("roost_providers.rs");

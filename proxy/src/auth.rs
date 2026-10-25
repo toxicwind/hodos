@@ -28,7 +28,7 @@ use subtle::ConstantTimeEq;
 
 use crate::{AppState, config::StoredConfig};
 
-const COOKIE: &str = "hodos_session";
+const COOKIE: &str = "rhodochrosite_session";
 const SESSION_TTL_SECS: u64 = 12 * 3600;
 
 /// Constant-time byte equality (avoids leaking content via timing). `subtle`
@@ -479,7 +479,7 @@ pub async fn login_submit(
 			.body(Body::empty())
 			.unwrap();
 	}
-	metrics::counter!("hodos_login_failures_total").increment(1);
+	metrics::counter!("rhodochrosite_login_failures_total").increment(1);
 	admin.note_failure();
 	tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 	login_html(Some("invalid_credentials"))

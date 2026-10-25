@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# hodos-mise-fix.sh — restore mise.toml, correctly merge _.file, start hodos.
+# rhodochrosite-mise-fix.sh — restore mise.toml, correctly merge _.file, start rhodochrosite.
 set -uo pipefail
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-RUN="$HOME/.hodos-maxfix/mise-fix-$STAMP"
+RUN="$HOME/.rhodochrosite-maxfix/mise-fix-$STAMP"
 mkdir -p "$RUN"; LOG="$RUN/fix.log"; : > "$LOG"
 log(){ printf '%s\n' "$*" | tee -a "$LOG"; }
 hdr(){ log ""; log "════════════════════════════════════════════════════════════════════"; log "$*"; log "════════════════════════════════════════════════════════════════════"; }
 
-hdr "hodos-mise-fix $STAMP"
+hdr "rhodochrosite-mise-fix $STAMP"
 
 MISE="$HOME/estate/mise.toml"
 LATEST_BAK=$(ls -1t "$MISE".bak.* 2>/dev/null | head -1)
@@ -38,7 +38,7 @@ python3 - "$MISE" "$HOME" <<'PYEOF' | tee -a "$LOG"
 import sys, pathlib, re
 mp = pathlib.Path(sys.argv[1]); home = sys.argv[2]
 s = mp.read_text()
-want = [f"{home}/.secrets", f"{home}/estate/config/hodos-ssot/hodos.env"]
+want = [f"{home}/.secrets", f"{home}/estate/config/rhodochrosite-ssot/rhodochrosite.env"]
 
 # find the [env] block
 m = re.search(r'(?ms)^\[env\]\s*\n(.*?)(?=^\[|\Z)', s)
@@ -83,13 +83,13 @@ if mise ls >/dev/null 2>&1; then log "  ✓ mise parses after merge"; else
   exit 1
 fi
 
-# ── 5. start hodos via pitchfork ──────────────────────────────────────────
-hdr "4. start hodos via pitchfork"
+# ── 5. start rhodochrosite via pitchfork ──────────────────────────────────────────
+hdr "4. start rhodochrosite via pitchfork"
 # mise daemons subcommands: start | stop | restart | ls | status | logs | tui
-mise daemons restart hodos 2>&1 | tee -a "$LOG" \
-  || mise daemons start hodos 2>&1 | tee -a "$LOG" \
-  || pitchfork restart estate/hodos 2>&1 | tee -a "$LOG" \
-  || pitchfork start estate/hodos 2>&1 | tee -a "$LOG" \
+mise daemons restart rhodochrosite 2>&1 | tee -a "$LOG" \
+  || mise daemons start rhodochrosite 2>&1 | tee -a "$LOG" \
+  || pitchfork restart estate/rhodochrosite 2>&1 | tee -a "$LOG" \
+  || pitchfork start estate/rhodochrosite 2>&1 | tee -a "$LOG" \
   || true
 
 # ── 6. readiness ──────────────────────────────────────────────────────────
@@ -103,15 +103,15 @@ for i in $(seq 1 60); do
 done
 if [ "$ok" -ne 1 ]; then
   log "  ✗ not ready — mise daemons status/logs:"
-  mise daemons status hodos 2>&1 | tee -a "$LOG" || true
-  mise daemons logs hodos 2>&1 | tail -80 | tee -a "$LOG" || true
+  mise daemons status rhodochrosite 2>&1 | tee -a "$LOG" || true
+  mise daemons logs rhodochrosite 2>&1 | tail -80 | tee -a "$LOG" || true
   pitchfork status 2>&1 | tee -a "$LOG" || true
   exit 1
 fi
 
 # ── 7. probe ──────────────────────────────────────────────────────────────
 hdr "6. probe"
-KEY=$(grep -m1 '^FLOCK_API_KEY=' "$HOME/estate/config/hodos-ssot/hodos.env" 2>/dev/null | cut -d= -f2- || true)
+KEY=$(grep -m1 '^FLOCK_API_KEY=' "$HOME/estate/config/rhodochrosite-ssot/rhodochrosite.env" 2>/dev/null | cut -d= -f2- || true)
 log "  key prefix: ${KEY:0:14}…"
 curl -sS -i --max-time 5 http://127.0.0.1:25193/health 2>&1 | tee -a "$LOG"
 log ""
@@ -128,5 +128,5 @@ log ""
 log "  mise.toml:  $MISE"
 log "  pitchfork:  $HOME/estate/pitchfork.toml"
 log ""
-log "  ops:  mise daemons {start|stop|restart|status|logs} hodos"
+log "  ops:  mise daemons {start|stop|restart|status|logs} rhodochrosite"
 hdr "DONE — $LOG"

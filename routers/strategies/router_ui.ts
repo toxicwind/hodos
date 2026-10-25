@@ -55,7 +55,7 @@ pre{background:#06090f;border:1px solid var(--line);border-radius:8px;padding:10
 <div class="wrap"><div class="panel"><h2>Provider Matrix</h2><div id="providers"><span class="meta">loading</span></div></div>
 <div class="panel"><h2>Chat (OpenAI-compatible)</h2>
 <div class="row"><select id="model"></select>
-<select id="strategy"><option value="hybrid">hybrid</option><option value="free">free (local+free cloud)</option><option value="hodos_race">hodos_race</option><option value="ast_race">ast_race (legacy)</option><option value="sticky_affinity">sticky_affinity</option><option value="weighted_elo">weighted_elo</option><option value="circuit_chain">circuit_chain</option><option value="fifo_flock">fifo_flock</option><option value="fifo_matrix">fifo_matrix (legacy)</option></select></div>
+<select id="strategy"><option value="hybrid">hybrid</option><option value="free">free (local+free cloud)</option><option value="rhodochrosite_race">rhodochrosite_race</option><option value="ast_race">ast_race (legacy)</option><option value="sticky_affinity">sticky_affinity</option><option value="weighted_elo">weighted_elo</option><option value="circuit_chain">circuit_chain</option><option value="fifo_flock">fifo_flock</option><option value="fifo_matrix">fifo_matrix (legacy)</option></select></div>
 <textarea id="prompt" placeholder="Ask anything">Hello, identify which model is answering.</textarea>
 <div class="row" style="margin-top:8px"><button id="send">Send</button><button id="stream" style="background:var(--panel2);color:var(--ink);border:1px solid var(--line)">Stream</button></div>
 <pre id="out">-</pre><div class="meta" id="routed"></div></div></div>

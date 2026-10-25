@@ -1,7 +1,7 @@
 [workspace]
 
 [package]
-name = "hodos"
+name = "rhodochrosite"
 version = "0.6.6"
 edition = "2021"
 description = "Rate-limit-aware OpenAI-compatible proxy for NVIDIA NIM with multi-key load balancing"
@@ -50,7 +50,7 @@ getrandom = "0.2"
 utoipa = "=5.5.0"
 # Multi-provider routing state: health, ELO, sticky sessions, circuits, lane
 # windows, cooldowns, and governor snapshots survive restarts in
-# `$DATA_DIR/hodos_state.db` (WAL mode, single writer thread).
+# `$DATA_DIR/rhodochrosite_state.db` (WAL mode, single writer thread).
 rusqlite = { version = "0.31", features = ["bundled"] }
 # Weighted-ELO strategy draws probability-proportional candidates.
 rand = "0.8"

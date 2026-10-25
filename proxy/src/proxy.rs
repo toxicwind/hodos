@@ -44,7 +44,7 @@ struct Ctx {
 /// Cap on distinct `model` label values tracked, past which new models are
 /// bucketed to "other" so an attacker can't explode metric cardinality.
 const MODEL_LABEL_CAP: usize = 256;
-const DEADLINE_HEADER: &str = "x-hodos-deadline-ms";
+const DEADLINE_HEADER: &str = "x-rhodochrosite-deadline-ms";
 
 #[derive(Clone, Copy)]
 struct RequestDeadline(Instant);
@@ -225,9 +225,9 @@ async fn reserve_slot(
 	loop {
 		tokio::select! {
 			 slot = &mut rx => {
-				  histogram!("hodos_queue_wait_seconds").record(queued.elapsed().as_secs_f64());
+				  histogram!("rhodochrosite_queue_wait_seconds").record(queued.elapsed().as_secs_f64());
 				  if let Ok(slot) = &slot {
-						counter!("hodos_lane_requests_total", "lane" => slot.lane.to_string())
+						counter!("rhodochrosite_lane_requests_total", "lane" => slot.lane.to_string())
 							 .increment(1);
 				  }
 				  return slot.ok();
@@ -282,14 +282,14 @@ async fn acquire_model_permit(
 /// settings-driven pool swap lands on the (possibly retired) generation that
 /// made the grant.
 fn enter_cooldown(slot: &Slot, status: &str, backoff: Duration) {
-	counter!("hodos_lane_cooldown_total", "lane" => slot.lane.to_string(), "status" => status.to_owned())
+	counter!("rhodochrosite_lane_cooldown_total", "lane" => slot.lane.to_string(), "status" => status.to_owned())
         .increment(1);
 	slot.pool.penalize(slot.lane, backoff);
 }
 
 fn record_request(ctx: &Ctx, status: &str) {
 	counter!(
-		 "hodos_requests_total",
+		 "rhodochrosite_requests_total",
 		 "client" => ctx.client.clone(),
 		 "model" => ctx.model.clone(),
 		 "path" => ctx.path.clone(),
@@ -308,7 +308,7 @@ fn record_request(ctx: &Ctx, status: &str) {
 
 fn record_deadline(ctx: &Ctx) {
 	counter!(
-		 "hodos_deadline_exceeded_total",
+		 "rhodochrosite_deadline_exceeded_total",
 		 "client" => ctx.client.clone(),
 		 "model" => ctx.model.clone(),
 		 "path" => ctx.path.clone(),
@@ -319,12 +319,12 @@ fn record_deadline(ctx: &Ctx) {
 
 fn record_tokens(ctx: &Ctx, prompt: Option<u64>, completion: Option<u64>, source: &str) {
 	if let Some(p) = prompt {
-		counter!("hodos_prompt_tokens_total", "client" => ctx.client.clone(), "model" => ctx.model.clone())
+		counter!("rhodochrosite_prompt_tokens_total", "client" => ctx.client.clone(), "model" => ctx.model.clone())
             .increment(p);
 	}
 	if let Some(c) = completion {
 		counter!(
-			 "hodos_completion_tokens_total",
+			 "rhodochrosite_completion_tokens_total",
 			 "client" => ctx.client.clone(),
 			 "model" => ctx.model.clone(),
 			 "source" => source.to_owned(),
@@ -379,32 +379,32 @@ fn record_shape(ctx: &Ctx, parsed: Option<&serde_json::Value>, wants_stream: boo
 	// doing"). "Harness" is retired vocabulary; see
 	// knowledge/decisions/standard-vocabulary.md.
 	counter!(
-		 "hodos_stream_requests_total",
+		 "rhodochrosite_stream_requests_total",
 		 "client" => ctx.client.clone(),
 		 "stream" => if wants_stream { "true" } else { "false" }.to_owned(),
 	)
 	.increment(1);
 	let Some(v) = parsed else { return };
 	if let Some(msgs) = v.get("messages").and_then(|m| m.as_array()) {
-		histogram!("hodos_request_messages", "client" => ctx.client.clone())
+		histogram!("rhodochrosite_request_messages", "client" => ctx.client.clone())
 			.record(msgs.len() as f64);
 	}
 	if let Some(n) = count_tools(v) {
-		histogram!("hodos_request_tools", "client" => ctx.client.clone()).record(n as f64);
-		counter!("hodos_tool_choice_total", "mode" => tool_choice_mode(v).to_owned()).increment(1);
+		histogram!("rhodochrosite_request_tools", "client" => ctx.client.clone()).record(n as f64);
+		counter!("rhodochrosite_tool_choice_total", "mode" => tool_choice_mode(v).to_owned()).increment(1);
 	}
 	if let Some(mt) = v
 		.get("max_tokens")
 		.and_then(|x| x.as_u64())
 		.or_else(|| v.get("max_completion_tokens").and_then(|x| x.as_u64()))
 	{
-		histogram!("hodos_request_max_tokens", "client" => ctx.client.clone()).record(mt as f64);
+		histogram!("rhodochrosite_request_max_tokens", "client" => ctx.client.clone()).record(mt as f64);
 	}
 	if let Some(t) = v.get("temperature").and_then(|x| x.as_f64()) {
-		histogram!("hodos_request_temperature", "client" => ctx.client.clone()).record(t);
+		histogram!("rhodochrosite_request_temperature", "client" => ctx.client.clone()).record(t);
 	}
 	if is_json_mode(v) {
-		counter!("hodos_json_mode_total", "client" => ctx.client.clone()).increment(1);
+		counter!("rhodochrosite_json_mode_total", "client" => ctx.client.clone()).increment(1);
 	}
 }
 
@@ -416,7 +416,7 @@ fn record_observations(
 ) -> Option<(u64, &'static str)> {
 	for metric in usage_observation_metrics(&observations.usage) {
 		counter!(
-			 "hodos_usage_observations_total",
+			 "rhodochrosite_usage_observations_total",
 			 "field" => metric.field,
 			 "result" => metric.result,
 		)
@@ -437,7 +437,7 @@ fn record_observations(
 			continue;
 		};
 		counter!(
-			 "hodos_finish_reason_total",
+			 "rhodochrosite_finish_reason_total",
 			 "model" => ctx.model.clone(),
 			 "reason" => reason.metric_label(),
 		)
@@ -445,13 +445,13 @@ fn record_observations(
 	}
 	if let Observation::Measured(reasoning) = observations.usage.reasoning_tokens {
 		if reasoning > 0 {
-			counter!("hodos_reasoning_tokens_total", "model" => ctx.model.clone())
+			counter!("rhodochrosite_reasoning_tokens_total", "model" => ctx.model.clone())
 				.increment(reasoning);
 		}
 	}
 	if let Observation::Measured(tool_calls) = observations.tool_calls {
 		if tool_calls > 0 {
-			counter!("hodos_tool_calls_total", "model" => ctx.model.clone()).increment(tool_calls);
+			counter!("rhodochrosite_tool_calls_total", "model" => ctx.model.clone()).increment(tool_calls);
 		}
 	}
 	completion.map(|value| (value, source))
@@ -543,7 +543,7 @@ pub async fn handle(
 		}
 	});
 	if inflight > cfg.max_inflight {
-		counter!("hodos_shed_total").increment(1);
+		counter!("rhodochrosite_shed_total").increment(1);
 		return overloaded(cfg.max_inflight);
 	}
 
@@ -568,7 +568,7 @@ pub async fn handle(
 			match matched {
 				Some(name) => name,
 				None => {
-					counter!("hodos_unauthorized_total").increment(1);
+					counter!("rhodochrosite_unauthorized_total").increment(1);
 					tokio::time::sleep(Duration::from_millis(250)).await;
 					return unauthorized();
 				},
@@ -599,7 +599,7 @@ pub async fn handle(
 		let session_id = headers
 			.get("x-session-id")
 			.and_then(|v| v.to_str().ok())
-			.unwrap_or("hodos-dots-session");
+			.unwrap_or("rhodochrosite-dots-session");
 		if let Some(ref mut val) = parsed {
 			*val = crate::dots::coerce_dots_payload(val.clone(), session_id);
 			raw_model = crate::dots::DOTS_CANONICAL_MODEL.to_owned();
@@ -761,8 +761,8 @@ async fn buffered(
 	deadline: Instant,
 	raw_model: &str,
 ) -> Response {
-	let _active = crate::dispatch::scopeguard(|| gauge!("hodos_active_requests").decrement(1.0));
-	gauge!("hodos_active_requests").increment(1.0);
+	let _active = crate::dispatch::scopeguard(|| gauge!("rhodochrosite_active_requests").decrement(1.0));
+	gauge!("rhodochrosite_active_requests").increment(1.0);
 	// Session identity for sticky affinity: the authed client plus the
 	// requested model. (AstMatrix derived it from the incoming Bearer
 	// token; the authed client name is our stable equivalent.)
@@ -784,7 +784,7 @@ async fn buffered(
 		// Relay the Gemini Interactions turn handle. keypool (:25109) reads
 		// `x-previous-interaction-id` to build `previous_interaction_id` and
 		// answers with `x-interaction-id`; without the relay every tool loop
-		// through hodos dies with a 400 on the second turn.
+		// through rhodochrosite dies with a 400 on the second turn.
 		passthrough: headers
 			.get("x-previous-interaction-id")
 			.and_then(|v| v.to_str().ok())
@@ -805,13 +805,13 @@ async fn buffered(
 	let outcome = state.router.execute_buffered(ectx).await;
 	match outcome {
 		Ok(crate::router::ExecuteOutcome::Response(resp)) => {
-			histogram!("hodos_upstream_seconds", "model" => ctx.model.clone())
+			histogram!("rhodochrosite_upstream_seconds", "model" => ctx.model.clone())
 				.record(sent_at.elapsed().as_secs_f64());
 			record_request(&ctx, resp.status().as_str());
 			relay(resp, &ctx).await
 		},
 		Ok(crate::router::ExecuteOutcome::Coalesced(shared)) => {
-			histogram!("hodos_upstream_seconds", "model" => ctx.model.clone())
+			histogram!("rhodochrosite_upstream_seconds", "model" => ctx.model.clone())
 				.record(sent_at.elapsed().as_secs_f64());
 			record_request(&ctx, shared.status.to_string().as_str());
 			relay_shared(&shared, &ctx)
@@ -819,7 +819,7 @@ async fn buffered(
 		Ok(crate::router::ExecuteOutcome::Buffered { status, content_type, body, extra }) => {
 			// The router already applied the empty-completion substance
 			// guard to these bytes; relay verbatim and observe.
-			histogram!("hodos_upstream_seconds", "model" => ctx.model.clone())
+			histogram!("rhodochrosite_upstream_seconds", "model" => ctx.model.clone())
 				.record(sent_at.elapsed().as_secs_f64());
 			record_request(&ctx, status.to_string().as_str());
 			let http_status = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY);
@@ -896,8 +896,8 @@ fn streaming(
 		// Holds the handler's in-flight slot until this task — the request's
 		// real lifetime — exits, so max_inflight bounds live streams too.
 		let _inflight = inflight_guard;
-		let _active = crate::dispatch::scopeguard(|| gauge!("hodos_active_requests").decrement(1.0));
-		gauge!("hodos_active_requests").increment(1.0);
+		let _active = crate::dispatch::scopeguard(|| gauge!("rhodochrosite_active_requests").decrement(1.0));
+		gauge!("rhodochrosite_active_requests").increment(1.0);
 		let deadline_tx = tx.clone();
 		let deadline_ctx = ctx.clone();
 		let observer = Arc::new(Mutex::new(None));
@@ -1134,9 +1134,9 @@ fn streaming(
 								// Explicit commit marker: from this point
 								// the response is live to the client and the
 								// pre-commit retry window closes.
-								counter!("hodos_stream_commit_total", "model" => ctx.model.clone())
+								counter!("rhodochrosite_stream_commit_total", "model" => ctx.model.clone())
 									.increment(1);
-								histogram!("hodos_ttft_seconds", "model" => ctx.model.clone())
+								histogram!("rhodochrosite_ttft_seconds", "model" => ctx.model.clone())
 									.record(sent_at.elapsed().as_secs_f64());
 							}
 							observer
@@ -1165,16 +1165,16 @@ fn streaming(
 				if let (Some(first), Some((c, source))) = (first_chunk, completion) {
 					let gen_secs = first.elapsed().as_secs_f64();
 					if gen_secs > 0.1 && c > 0 {
-						histogram!("hodos_tokens_per_second", "model" => ctx.model.clone(), "source" => source)
+						histogram!("rhodochrosite_tokens_per_second", "model" => ctx.model.clone(), "source" => source)
                         .record(c as f64 / gen_secs);
 						// Mean inter-token latency (time-per-output-token).
-						histogram!("hodos_tpot_seconds", "model" => ctx.model.clone())
+						histogram!("rhodochrosite_tpot_seconds", "model" => ctx.model.clone())
 							.record(gen_secs / c as f64);
 					}
 				}
 				// Total upstream time for streaming, for parity with the buffered
 				// path (which records upstream_seconds directly).
-				histogram!("hodos_upstream_seconds", "model" => ctx.model.clone())
+				histogram!("rhodochrosite_upstream_seconds", "model" => ctx.model.clone())
 					.record(sent_at.elapsed().as_secs_f64());
 				record_request(&ctx, "200");
 				return;
@@ -1214,7 +1214,7 @@ fn streaming(
 /// other enabled provider contributes its configured model ids, tagged with
 /// their source provider. Non-JSON bodies pass through untouched, and the
 /// merge is idempotent (already-listed ids are not duplicated).
-/// Live Hodos metadata attached to each /v1/models entry: which
+/// Live Rhodochrosite metadata attached to each /v1/models entry: which
 /// provider serves it, whether that provider is usable (keys present) and
 /// healthy, circuit state, probe latency, ELO, and the current
 /// empty-completion strike count for the exact (provider, model) pair.
@@ -1246,7 +1246,7 @@ const NIM_VERIFIED_MODELS: &[&str] = &[
 	"z-ai/glm-5.3-flash",
 ];
 
-fn hodos_model_meta(
+fn rhodochrosite_model_meta(
 	router: &crate::router::RouterHandle,
 	meta: &crate::router::ProviderMeta,
 	model: &str,
@@ -1305,7 +1305,7 @@ fn aggregate_models(body: &Bytes, router: &crate::router::RouterHandle) -> Bytes
 				.and_then(|i| i.as_str())
 				.unwrap_or("")
 				.to_owned();
-			entry["hodos"] = hodos_model_meta(router, nv, &id);
+			entry["rhodochrosite"] = rhodochrosite_model_meta(router, nv, &id);
 		}
 	}
 	// Fix C: quarantine filter. Two layers --
@@ -1338,7 +1338,7 @@ fn aggregate_models(body: &Bytes, router: &crate::router::RouterHandle) -> Bytes
 					 "id": m,
 					 "object": "model",
 					 "owned_by": pm.provider,
-					 "hodos": hodos_model_meta(router, pm, m),
+					 "rhodochrosite": rhodochrosite_model_meta(router, pm, m),
 				}));
 			}
 		}
@@ -1479,7 +1479,7 @@ async fn relay(resp: reqwest::Response, ctx: &Ctx) -> Response {
 	// Relay upstream turn handles to the client. keypool stamps
 	// `x-interaction-id` with the Gemini Interactions turn id; without it a
 	// caller cannot send a `function_result` on the next turn, and the tool
-	// loop breaks the moment it routes through hodos.
+	// loop breaks the moment it routes through rhodochrosite.
 	let extra: Vec<(String, String)> = ["x-interaction-id"]
 		.iter()
 		.filter_map(|k| {

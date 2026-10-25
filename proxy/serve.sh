@@ -1,5 +1,5 @@
-# serve.sh — native launcher for hodos (the merged router) on :25193.
-# run-nim.sh — native launcher for the hodos NIM gateway on :25193.
+# serve.sh — native launcher for rhodochrosite (the merged router) on :25193.
+# run-nim.sh — native launcher for the rhodochrosite NIM gateway on :25193.
 # 2026-10-17: replaces the dockerized miztertea/nim-proxy container (Lane A
 # doctrine: estate services run under pitchfork, never docker). Same config
 # store schema; also serves the Anthropic /v1/messages surface for Claude Code.
@@ -18,9 +18,9 @@ if [[ -f "$HOME/.secrets" ]]; then
   . "$HOME/.secrets"
   set +a
 fi
-export DATA_DIR="${DATA_DIR:-${HODOS_DATA_DIR:-$HOME/.hodos/nim-data}}"
-export HOST="${HOST:-${HODOS_HOST:-127.0.0.1}}"
-export PORT="${PORT:-${HODOS_PORT:-25193}}"
-BIN="/home/toxic/pens/olympus/products/hodos/proxy/target/release/hodos"
-[[ -x "$BIN" ]] || { echo "hodos binary missing at $BIN — run cargo build --release in ranch/hodos/proxy" >&2; exit 1; }
+export DATA_DIR="${DATA_DIR:-${RHODOCHROSITE_DATA_DIR:-$HOME/.rhodochrosite/nim-data}}"
+export HOST="${HOST:-${RHODOCHROSITE_HOST:-127.0.0.1}}"
+export PORT="${PORT:-${RHODOCHROSITE_PORT:-25193}}"
+BIN="/home/toxic/pens/olympus/products/rhodochrosite/proxy/target/release/rhodochrosite"
+[[ -x "$BIN" ]] || { echo "rhodochrosite binary missing at $BIN — run cargo build --release in ranch/rhodochrosite/proxy" >&2; exit 1; }
 exec "$BIN"

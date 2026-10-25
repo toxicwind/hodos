@@ -3,7 +3,7 @@
   "state": "Source",
   "messages": {
     "common.app_name": {
-      "en": "Hodos",
+      "en": "Rhodochrosite",
       "desc": "Product name.",
       "hash": "1e2b099a"
     },
@@ -1109,7 +1109,7 @@
       "hash": "41fcec64"
     },
     "login.document.title": {
-      "en": "Hodos — Sign in",
+      "en": "Rhodochrosite — Sign in",
       "desc": "Browser tab title for the sign-in page.",
       "hash": "991ec816"
     },
@@ -1738,8 +1738,8 @@
       "hash": "b9305ea3"
     },
     "setup.document.title": {
-      "en": "Hodos — First-time setup",
-      "desc": "Browser tab title. 'Hodos' is the product name and stays.",
+      "en": "Rhodochrosite — First-time setup",
+      "desc": "Browser tab title. 'Rhodochrosite' is the product name and stays.",
       "hash": "a59b017c"
     },
     "setup.header.subtitle": {

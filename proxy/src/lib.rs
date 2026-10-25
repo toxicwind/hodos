@@ -64,15 +64,15 @@ mod client_api;
 // production bucket registry; fixture code must never approximate it.
 #[rustfmt::skip]
 const HISTOGRAM_BUCKETS: &[(&str, &[f64])] = &[
-    ("hodos_ttft_seconds",       &[0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0]),
-    ("hodos_tokens_per_second",  &[1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 320.0]),
-    ("hodos_queue_wait_seconds", &[0.001, 0.05, 0.25, 1.0, 5.0, 15.0, 60.0, 180.0, 600.0]),
-    ("hodos_upstream_seconds",   &[0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0]),
-    ("hodos_tpot_seconds",       &[0.005, 0.01, 0.02, 0.04, 0.08, 0.16, 0.32]),
-    ("hodos_request_messages",   &[1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0]),
-    ("hodos_request_tools",      &[0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0]),
-    ("hodos_request_max_tokens", &[128.0, 256.0, 512.0, 1024.0, 2048.0, 4096.0, 8192.0, 16384.0, 32768.0, 65536.0, 131072.0]),
-    ("hodos_request_temperature", &[0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.5, 2.0]),
+    ("rhodochrosite_ttft_seconds",       &[0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0]),
+    ("rhodochrosite_tokens_per_second",  &[1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 320.0]),
+    ("rhodochrosite_queue_wait_seconds", &[0.001, 0.05, 0.25, 1.0, 5.0, 15.0, 60.0, 180.0, 600.0]),
+    ("rhodochrosite_upstream_seconds",   &[0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0]),
+    ("rhodochrosite_tpot_seconds",       &[0.005, 0.01, 0.02, 0.04, 0.08, 0.16, 0.32]),
+    ("rhodochrosite_request_messages",   &[1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0]),
+    ("rhodochrosite_request_tools",      &[0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0]),
+    ("rhodochrosite_request_max_tokens", &[128.0, 256.0, 512.0, 1024.0, 2048.0, 4096.0, 8192.0, 16384.0, 32768.0, 65536.0, 131072.0]),
+    ("rhodochrosite_request_temperature", &[0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.5, 2.0]),
 ];
 
 /// App-level configuration, published as an immutable snapshot: every request
@@ -459,7 +459,7 @@ const BANNER: &str = r#"
     |_|\_|___|_|  |_| |_| |_|_\\___/_/\_\  |_|
 "#;
 
-/// `hodos --health`: probe our own /health endpoint and exit 0/1.
+/// `rhodochrosite --health`: probe our own /health endpoint and exit 0/1.
 /// Exists because the scratch image has no shell or curl for HEALTHCHECK.
 fn health_probe() -> ! {
 	use std::io::{Read, Write};
@@ -520,7 +520,7 @@ pub async fn run() {
 		.with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout()))
 		.with_env_filter(
 			tracing_subscriber::EnvFilter::try_from_default_env()
-				.unwrap_or_else(|_| "hodos=info".into()),
+				.unwrap_or_else(|_| "rhodochrosite=info".into()),
 		)
 		.init();
 
@@ -616,11 +616,11 @@ pub async fn run() {
 	}
 	let prometheus = builder.install_recorder().expect("prometheus recorder");
 	metrics::describe_counter!(
-		"hodos_usage_observations_total",
+		"rhodochrosite_usage_observations_total",
 		"Final classified upstream usage observations by field and result."
 	);
 	metrics::describe_gauge!(
-		"hodos_history_persistence_degraded",
+		"rhodochrosite_history_persistence_degraded",
 		"Whether canonical history persistence is degraded (0 = ok, 1 = degraded)."
 	);
 
@@ -647,7 +647,7 @@ pub async fn run() {
 				Arc::new(history::History::load(None, stored.history.days, history_capacity))
 			},
 		};
-	metrics::gauge!("hodos_history_persistence_degraded").set(
+	metrics::gauge!("rhodochrosite_history_persistence_degraded").set(
 		if hist.status().persistence == "degraded" {
 			1.0
 		} else {
