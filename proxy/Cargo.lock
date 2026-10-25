@@ -473,33 +473,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hodos"
-version = "0.6.6"
-dependencies = [
- "axum",
- "bytes",
- "dotenvy",
- "futures-util",
- "getrandom 0.2.17",
- "hmac",
- "http-body-util",
- "metrics",
- "metrics-exporter-prometheus",
- "rand 0.8.8",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "subtle",
- "tokio",
- "tokio-stream",
- "tracing",
- "tracing-subscriber",
- "utoipa",
-]
-
-[[package]]
 name = "http"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1231,6 +1204,33 @@ dependencies = [
  "wasm-streams",
  "web-sys",
  "webpki-roots",
+]
+
+[[package]]
+name = "rhodochrosite"
+version = "0.6.6"
+dependencies = [
+ "axum",
+ "bytes",
+ "dotenvy",
+ "futures-util",
+ "getrandom 0.2.17",
+ "hmac",
+ "http-body-util",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "rand 0.8.8",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "tracing-subscriber",
+ "utoipa",
 ]
 
 [[package]]

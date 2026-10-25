@@ -1,4 +1,4 @@
-//! Client-facing API surface: the endpoints automated clients (tau-hodossync,
+//! Client-facing API surface: the endpoints automated clients (tau-rhodochrositesync,
 //! CLI tooling, other boxes) consume. Distinct from `settings.rs`, which is
 //! the operator dashboard behind session auth.
 //!
@@ -139,7 +139,7 @@ pub async fn health_ping(State(state): State<Arc<AppState>>, headers: HeaderMap)
 // GET /api/providers
 // ---------------------------------------------------------------------------
 
-/// One connection row. Shape matches the tau-hodossync
+/// One connection row. Shape matches the tau-rhodochrositesync
 /// `ProviderConnection` contract: `provider`, `isActive`, `testStatus`,
 /// and a `providerSpecificData.prefix` so alias resolution works.
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -161,7 +161,7 @@ pub struct ClientProviderPrefix {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ClientProvidersResponse {
-	/// Rhodochrosite field name; tau-hodossync reads `connections`.
+	/// Rhodochrosite field name; tau-rhodochrositesync reads `connections`.
 	pub connections: Vec<ClientProviderConnection>,
 	/// Total configured providers (usable or not).
 	pub total:       usize,
@@ -215,7 +215,7 @@ pub async fn providers(State(state): State<Arc<AppState>>, headers: HeaderMap) -
 // GET /api/pricing, GET /api/pricing/models
 // ---------------------------------------------------------------------------
 
-/// Per-model pricing. Field names match the tau-hodossync `ModelPricing`
+/// Per-model pricing. Field names match the tau-rhodochrositesync `ModelPricing`
 /// contract (both the snake_case upstream keys and the camelCase aliases
 /// it tolerates).
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -231,7 +231,7 @@ pub struct ModelPricingRow {
 }
 
 /// One provider's entry in `/api/pricing/models`. Matches the
-/// tau-hodossync `PricingProvider` contract: `id`, `alias`,
+/// tau-rhodochrositesync `PricingProvider` contract: `id`, `alias`,
 /// `displayPrefix`.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct PricingProviderRow {

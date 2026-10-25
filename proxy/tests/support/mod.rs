@@ -528,7 +528,7 @@ async fn spawn_and_wait_healthy(data_dir: std::path::PathBuf, envs: &[(&str, &st
 }
 
 fn base_cmd(port: u16, data_dir: &std::path::Path) -> std::process::Command {
-	let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_hodos"));
+	let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_rhodochrosite"));
 	cmd.env_clear()
 		.current_dir(std::env::temp_dir()) // dodge any local .env
 		.env("PORT", port.to_string())

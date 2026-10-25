@@ -4453,7 +4453,7 @@ async fn legacy_history_is_warned_once_without_parsing_or_mutating_it() {
 		.local_addr()
 		.unwrap()
 		.port();
-	let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_hodos"))
+	let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_rhodochrosite"))
 		.env_clear()
 		.current_dir(std::env::temp_dir())
 		.env("PORT", port.to_string())
@@ -4507,7 +4507,7 @@ async fn stale_canonical_temporaries_are_counted_once_without_inspection_or_dele
 		.local_addr()
 		.unwrap()
 		.port();
-	let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_hodos"))
+	let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_rhodochrosite"))
 		.env_clear()
 		.current_dir(std::env::temp_dir())
 		.env("PORT", port.to_string())
@@ -6736,7 +6736,7 @@ async fn user_role_is_denied_server_settings_and_foreign_keys() {
 			serde_json::json!({
 				 "max_wait_secs": 60, "heartbeat_secs": 5, "models_ttl_secs": 600,
 				 "stream_idle_secs": 300, "request_timeout_secs": 300,
-				 "max_inflight": 512, "strict_passthrough": false
+				 "max_inflight": 512, "promote_reasoning_content": true, "strict_passthrough": false
 			}),
 		),
 		(
@@ -6744,7 +6744,7 @@ async fn user_role_is_denied_server_settings_and_foreign_keys() {
 			serde_json::json!({
 				 "base_url": "https://forbidden.invalid/v1", "max_wait_secs": 60,
 				 "heartbeat_secs": 5, "models_ttl_secs": 600, "stream_idle_secs": 300,
-				 "request_timeout_secs": 300, "max_inflight": 512, "strict_passthrough": false
+				 "request_timeout_secs": 300, "max_inflight": 512, "promote_reasoning_content": true, "strict_passthrough": false
 			}),
 		),
 		("/api/settings/governor", serde_json::json!({"enabled": false})),
@@ -7482,7 +7482,7 @@ async fn server_settings_save_is_atomic() {
 		serde_json::json!({
 			 "base_url": "https://changed.invalid/v1", "max_wait_secs": 5,
 			 "heartbeat_secs": 10, "models_ttl_secs": 600, "stream_idle_secs": 300,
-			 "request_timeout_secs": 300, "max_inflight": 512, "strict_passthrough": false
+			 "request_timeout_secs": 300, "max_inflight": 512, "promote_reasoning_content": true, "strict_passthrough": false
 		}),
 	)
 	.await;
@@ -7497,7 +7497,7 @@ async fn server_settings_save_is_atomic() {
 		serde_json::json!({
 			 "base_url": "gopher://invalid", "max_wait_secs": 900,
 			 "heartbeat_secs": 10, "models_ttl_secs": 600, "stream_idle_secs": 300,
-			 "request_timeout_secs": 300, "max_inflight": 512, "strict_passthrough": false
+			 "request_timeout_secs": 300, "max_inflight": 512, "promote_reasoning_content": true, "strict_passthrough": false
 		}),
 	)
 	.await;
@@ -7519,7 +7519,7 @@ async fn server_settings_save_is_atomic() {
 		serde_json::json!({
 			 "base_url": "https://changed.invalid/v1", "max_wait_secs": 900,
 			 "heartbeat_secs": 10, "models_ttl_secs": 600, "stream_idle_secs": 300,
-			 "request_timeout_secs": 300, "max_inflight": 512, "strict_passthrough": false
+			 "request_timeout_secs": 300, "max_inflight": 512, "promote_reasoning_content": true, "strict_passthrough": false
 		}),
 	)
 	.await;
@@ -7536,7 +7536,7 @@ async fn server_settings_save_is_atomic() {
 		serde_json::json!({
 			 "base_url": "https://changed.invalid/v1", "max_wait_secs": 900,
 			 "heartbeat_secs": 10, "models_ttl_secs": 600, "stream_idle_secs": 300,
-			 "request_timeout_secs": 300, "max_inflight": 512, "strict_passthrough": false
+			 "request_timeout_secs": 300, "max_inflight": 512, "promote_reasoning_content": true, "strict_passthrough": false
 		}),
 	)
 	.await;
@@ -7548,7 +7548,7 @@ async fn server_settings_save_is_atomic() {
 		serde_json::json!({
 			 "max_wait_secs": 900, "heartbeat_secs": 10, "models_ttl_secs": 600,
 			 "stream_idle_secs": 300, "request_timeout_secs": 300,
-			 "max_inflight": 512, "strict_passthrough": false
+			 "max_inflight": 512, "promote_reasoning_content": true, "strict_passthrough": false
 		})
 	);
 	assert_ne!(std::fs::read(proxy.data_dir.join("config.json")).unwrap(), before_bytes);
@@ -7570,7 +7570,7 @@ async fn limits_validation_rejects_bad_bounds_and_partial_bodies() {
 		serde_json::json!({
 			 "max_wait_secs": 5, "heartbeat_secs": 10, "models_ttl_secs": 600,
 			 "stream_idle_secs": 300, "request_timeout_secs": 300,
-			 "max_inflight": 512, "strict_passthrough": false
+			 "max_inflight": 512, "promote_reasoning_content": true, "strict_passthrough": false
 		}),
 	)
 	.await;
@@ -8227,7 +8227,7 @@ async fn health_probe_flag_reports_liveness() {
 	let mock = start_mock().await;
 	let proxy = start_proxy(&mock.url, &[]).await;
 	let run_health = |port: String| {
-		let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_hodos"));
+		let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_rhodochrosite"));
 		cmd.arg("--health").env("PORT", port);
 		// Forward the coverage profile path so the probe subprocess is counted
 		// under `cargo llvm-cov` (a no-op in a normal test run).

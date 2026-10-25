@@ -950,10 +950,10 @@ mod tests {
 	#[test]
 	fn roost_providers_copy_in_sync() {
 		// mesh/proxy/rhodochrosite-proxy/src/roost_providers.rs must be byte-identical to
-		// pinax/generated/providers.rs modulo the Generated-at stamp.
+		// mimetite/generated/providers.rs modulo the Generated-at stamp.
 		// Regenerate with: bun ../../../rhodochrosite/scripts/sync-roost-providers.ts
 		// --write
-		let generated = include_str!("../../../pinax/generated/providers.rs");
+		let generated = include_str!("../../../mimetite/generated/providers.rs");
 		let copy = include_str!("roost_providers.rs");
 		fn normalize(s: &str) -> String {
 			s.lines()

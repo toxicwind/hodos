@@ -323,7 +323,7 @@ pub fn translate_response(openai: &Value, requested_model: &str) -> Value {
 	let message = choice.get("message").cloned().unwrap_or(json!({}));
 	let usage = openai.get("usage").cloned().unwrap_or(json!({}));
 	json!({
-		 "id": openai.get("id").cloned().unwrap_or(json!("msg_hodos")),
+		 "id": openai.get("id").cloned().unwrap_or(json!("msg_rhodochrosite")),
 		 "type": "message",
 		 "role": "assistant",
 		 "model": requested_model,
@@ -391,7 +391,7 @@ impl SseTranslator {
 				&json!({
 					 "type": "message_start",
 					 "message": {
-						  "id": v.get("id").cloned().unwrap_or(json!("msg_hodos")),
+						  "id": v.get("id").cloned().unwrap_or(json!("msg_rhodochrosite")),
 						  "type": "message",
 						  "role": "assistant",
 						  "model": self.requested_model,
