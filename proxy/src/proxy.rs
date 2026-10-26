@@ -1787,4 +1787,41 @@ pub mod fuzz {
 			"sanitized label must stay in the safe charset"
 		);
 	}
+
+	#[test]
+	fn unauthorized_is_401_with_bearer_challenge() {
+		let r = super::unauthorized();
+		assert_eq!(r.status(), axum::http::StatusCode::UNAUTHORIZED);
+	}
+
+	#[test]
+	fn invalid_deadline_is_400() {
+		let r = super::invalid_deadline();
+		assert_eq!(r.status(), axum::http::StatusCode::BAD_REQUEST);
+	}
+
+	#[test]
+	fn deadline_exceeded_is_504() {
+		let r = super::deadline_exceeded();
+		assert_eq!(r.status(), axum::http::StatusCode::GATEWAY_TIMEOUT);
+	}
+
+	#[test]
+	fn overloaded_is_503_with_retry_after() {
+		let r = super::overloaded(42);
+		let st = r.status();
+		assert_eq!(st, axum::http::StatusCode::SERVICE_UNAVAILABLE);
+		assert_eq!(
+			r.headers()
+				.get(axum::http::header::RETRY_AFTER)
+				.and_then(|v| v.to_str().ok()),
+			Some("5")
+		);
+	}
+
+	#[test]
+	fn bad_gateway_is_502() {
+		let r = super::bad_gateway();
+		assert_eq!(r.status(), axum::http::StatusCode::BAD_GATEWAY);
+	}
 }
