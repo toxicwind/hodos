@@ -15,3 +15,4 @@ github_*_pat.json
 # these exact filenames to exist on disk.
 !tests/fixtures/ui/clients-secret-absent.json
 !tests/fixtures/ui/clients-secret-present.json
+/target/
