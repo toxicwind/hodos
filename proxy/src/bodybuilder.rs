@@ -820,4 +820,23 @@ mod tests {
 		let out = sanitize_requests(reqs, None, 2);
 		assert_eq!(out.len(), 2);
 	}
+
+	#[test]
+	fn normalize_max_requests_clamps_and_defaults() {
+		assert_eq!(normalize_max_requests(None), DEFAULT_MAX_REQUESTS);
+		assert_eq!(normalize_max_requests(Some(0)), 1, "clamped below floor");
+		assert_eq!(normalize_max_requests(Some(usize::MAX)), MAX_MAX_REQUESTS);
+		assert_eq!(normalize_max_requests(Some(3)), 3);
+	}
+
+	#[test]
+	fn result_text_from_body_extracts_choice_content() {
+		let body = br#"{"choices":[{"message":{"content":"the answer"}}]}"#;
+		assert_eq!(result_text_from_body(body), "the answer");
+		// Missing / non-string content falls back to empty.
+		assert_eq!(result_text_from_body(br#"{"choices":[]}"#), "");
+		assert_eq!(result_text_from_body(br#"{"choices":[{"message":{"content":123}}]}"#), "");
+		// Non-JSON body is empty.
+		assert_eq!(result_text_from_body(b"not json"), "");
+	}
 }
