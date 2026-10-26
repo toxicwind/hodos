@@ -694,12 +694,86 @@ pub fn default_providers() -> Vec<ProviderDef> {
     v
 }
 
+/// Refresh the catalog-owned wire truth of the runtime provider defs.
+///
+/// The catalog (mimetite) is the SSOT for what a provider serves and how big
+/// a context each model holds. A store written by an older build keeps its
+/// saved values, so the runtime drifts from the catalog (the 2M-context
+/// handoff blocker: the store had no 2M window, so the router could not tell
+/// that a 1.28M job needs a 2M-capable model).
+///
+/// Rules (operator data is never lost):
+/// - `context_lengths` = the catalog's map (windows are catalog truth).
+/// - `models` = the runtime list PLUS any catalog model the runtime lacks
+///   (additive; an operator's own entries survive).
+pub fn apply_catalog_wire_truth(defs: &mut [ProviderDef]) {
+    for def in defs.iter_mut() {
+        let Some(cat) = crate::mimetite_providers::MIMETITE_PROVIDERS
+            .iter()
+            .find(|p| p.name == def.name)
+        else {
+            continue;
+        };
+        if !cat.context_lengths.is_empty() {
+            def.context_lengths = cat
+                .context_lengths
+                .iter()
+                .map(|(k, v)| (k.to_string(), *v))
+                .collect();
+        }
+        for m in cat.seeds.iter().chain(cat.static_models.iter()) {
+            // A wildcard provider already serves everything; enumerating the
+            // catalog's seeds on it is redundant (and would rewrite the
+            // legacy wildcard contract).
+            if def.models.iter().any(|existing| existing == "*") {
+                break;
+            }
+            if !def.models.iter().any(|existing| existing == m) {
+                def.models.push(m.to_string());
+            }
+        }
+    }
+}
+
 /// A generation of provider runtimes shared with request handlers.
 pub type SharedSet = Arc<ProviderSet>;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apply_catalog_wire_truth_refreshes_windows_and_adds_catalog_models() {
+        // A store written by an older build: stale windows, missing catalog
+        // models, plus an operator-only model that must survive.
+        let mut defs = vec![ProviderDef {
+            name: "openrouter".into(),
+            models: vec!["operator-only-model".into()],
+            context_lengths: std::collections::BTreeMap::from([(
+                "stale-model".to_string(),
+                1000u64,
+            )]),
+            ..ProviderDef::default()
+        }];
+        crate::providers::apply_catalog_wire_truth(&mut defs);
+        let d = &defs[0];
+        // Windows are catalog truth now.
+        assert!(!d.context_lengths.contains_key("stale-model"));
+        assert!(
+            d.context_lengths.values().any(|w| *w >= 2_000_000),
+            "the 2M window must reach the runtime def: {:?}",
+            d.context_lengths
+        );
+        // Operator entries survive; catalog models are added.
+        assert!(d.models.iter().any(|m| m == "operator-only-model"));
+        assert!(
+            d.models
+                .iter()
+                .any(|m| m.contains("grok-4.5") || m.contains("grok-4.6")),
+            "catalog models must be added: {:?}",
+            d.models
+        );
+    }
 
     #[test]
     fn models_url_never_doubles_the_v1_segment() {
