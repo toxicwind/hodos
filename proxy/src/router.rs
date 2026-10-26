@@ -604,23 +604,33 @@ impl RouterHandle {
 						// "auto": the provider's default model. An explicit
 						// model_map["auto"] wins, then the free default
 						// (zero-cost first for free-tier lanes), then the
-						// provider's first listed model.
-						def.model_map
+						// provider's first listed model. When the job needs
+						// more than that target can hold, pick the provider's
+						// LARGEST declared-window model that fits — the
+						// 2M-context handoff premise: a 1.28M-token job must
+						// land on a 2M-capable model, not on an alias whose
+						// upstream ceiling is 1M.
+						let mapped = def
+							.model_map
 							.get("auto")
 							.cloned()
 							.or_else(|| def.model_map.get("free").cloned())
 							.or_else(|| def.models.first().cloned())
-							.unwrap_or_else(|| model.to_string())
+							.unwrap_or_else(|| model.to_string());
+						pick_fitting_model(&def, &mapped, needed)
 					} else if free_directive {
 						// "free" -> this provider's default free model: an
 						// explicit model_map entry wins, else the first
 						// listed model, else the directive itself (upstream
-						// 404s, same as an unknown model today).
-						def.model_map
+						// 404s, same as an unknown model today). Context-aware
+						// like the auto lane.
+						let mapped = def
+							.model_map
 							.get("free")
 							.cloned()
 							.or_else(|| def.models.first().cloned())
-							.unwrap_or_else(|| model.to_string())
+							.unwrap_or_else(|| model.to_string());
+						pick_fitting_model(&def, &mapped, needed)
 					} else {
 						def.rewrite_model(model)
 					};
@@ -1510,6 +1520,36 @@ pub(crate) fn retryable_status(status: u16) -> bool {
 	matches!(status, 429 | 500 | 502 | 503 | 504)
 }
 
+/// Context-aware model pick for the directive lanes (auto/free).
+///
+/// The mapped target (e.g. `openrouter/auto`) is an alias whose upstream
+/// ceiling may be far below the job's needs — a 1.28M-token job forwarded
+/// there 400s with "maximum context length is 1048576". When the job needs
+/// more than the mapped target's declared window, pick the provider's
+/// LARGEST declared-window model that fits (e.g. `x-ai/grok-4.5` at 2M).
+/// Undeclared targets are assumed to fit (no evidence either way).
+fn pick_fitting_model(def: &ProviderDef, mapped: &str, needed: u64) -> String {
+	if needed == 0 {
+		return mapped.to_owned();
+	}
+	let mapped_window = def.context_lengths.get(mapped).copied();
+	let mapped_fits = match mapped_window {
+		Some(w) => w >= needed,
+		// Undeclared: no evidence it can't hold the job.
+		None => true,
+	};
+	if mapped_fits {
+		return mapped.to_owned();
+	}
+	def.models
+		.iter()
+		.filter_map(|m| def.context_lengths.get(m).map(|w| (m, *w)))
+		.filter(|(_, w)| *w >= needed)
+		.max_by_key(|(_, w)| *w)
+		.map(|(m, _)| m.clone())
+		.unwrap_or_else(|| mapped.to_owned())
+}
+
 /// Rewrite the request body's `model` field to the provider's upstream id.
 /// Non-JSON bodies, or bodies already carrying the right id, pass through
 /// untouched (zero-copy when nothing changes).
@@ -2057,6 +2097,36 @@ mod tests {
 		// needed == 0 disables the gate entirely.
 		let cands3 = handle.select("tiny-model", "", None);
 		assert_eq!(cands3.len(), 2);
+	}
+
+	#[test]
+	fn pick_fitting_model_prefers_the_largest_fitting_window() {
+		use std::collections::BTreeMap;
+		let mut def = test_def("openrouter");
+		def.models = vec![
+			"small-model".into(),
+			"mid-model".into(),
+			"big-model".into(),
+		];
+		let mut ctx = BTreeMap::new();
+		ctx.insert("small-model".to_string(), 100_000u64);
+		ctx.insert("mid-model".to_string(), 500_000u64);
+		ctx.insert("big-model".to_string(), 2_000_000u64);
+		def.context_lengths = ctx;
+		// Mapped target cannot hold a 1.28M job -> the largest FITTING model
+		// (the 2M-context premise: x-ai/grok-4.5-class target).
+		assert_eq!(pick_fitting_model(&def, "small-model", 1_280_000), "big-model");
+		// Mapped target fits -> unchanged.
+		assert_eq!(pick_fitting_model(&def, "mid-model", 400_000), "mid-model");
+		// Nothing fits -> keep the mapped target (best effort, upstream decides).
+		assert_eq!(pick_fitting_model(&def, "small-model", 5_000_000), "small-model");
+		// Undeclared mapped target -> no evidence it can't hold the job.
+		assert_eq!(
+			pick_fitting_model(&def, "unknown-alias", 1_280_000),
+			"unknown-alias"
+		);
+		// needed == 0 disables the pick entirely.
+		assert_eq!(pick_fitting_model(&def, "small-model", 0), "small-model");
 	}
 
 	#[tokio::test]
