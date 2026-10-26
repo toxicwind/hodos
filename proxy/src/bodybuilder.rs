@@ -743,4 +743,81 @@ mod tests {
 		let first = bodies[0]["messages"][0]["content"].as_str().unwrap();
 		assert!(first.starts_with("PART 1/"));
 	}
+
+	#[test]
+	fn deterministic_fanout_single_chunk_duplicates_job_across_requests() {
+		let bodies = deterministic_fanout("small-ish job", 4);
+		assert_eq!(bodies.len(), 4);
+		for b in &bodies {
+			assert_eq!(b["model"], json!("auto"));
+			assert_eq!(b["messages"][0]["content"], json!("small-ish job"));
+		}
+	}
+
+	#[test]
+	fn deterministic_fanout_uses_part_bodies_when_chunked() {
+		let bodies = deterministic_fanout(&"z".repeat(1_000_000), 3);
+		assert!(!bodies.is_empty());
+		assert!(bodies.len() <= 3);
+		let first = bodies[0]["messages"][0]["content"].as_str().unwrap();
+		assert!(first.starts_with("PART 1/"));
+	}
+
+	#[test]
+	fn chunked_request_bodies_never_exceed_max_requests() {
+		let job = (0..50)
+			.map(|i| format!("some reasonably long paragraph number {i} here"))
+			.collect::<Vec<_>>()
+			.join("\n\n");
+		for max in [1usize, 2, 4, 8] {
+			let bodies = chunked_request_bodies(&job, max);
+			assert!(bodies.len() <= max, "max={max} got {}", bodies.len());
+			assert!(!bodies.is_empty());
+		}
+	}
+
+	#[test]
+	fn free_pool_ids_only_lists_enabled_free_tier_providers() {
+		use crate::providers::ProviderDef;
+		let defs = vec![
+			ProviderDef {
+				name: "free-nim".into(),
+				enabled: true,
+				free_tier: true,
+				models: vec!["nvidia/a".into(), "nvidia/b".into()],
+				..ProviderDef::default()
+			},
+			ProviderDef {
+				name: "paid".into(),
+				enabled: true,
+				free_tier: false,
+				models: vec!["x/y".into()],
+				..ProviderDef::default()
+			},
+			ProviderDef {
+				name: "disabled-free".into(),
+				enabled: false,
+				free_tier: true,
+				models: vec!["z/w".into()],
+				..ProviderDef::default()
+			},
+		];
+		let ids = free_pool_ids(&defs);
+		assert_eq!(ids, vec!["free-nim/nvidia/a".to_string(), "free-nim/nvidia/b".to_string()]);
+	}
+
+	#[test]
+	fn sanitize_handles_non_object_entries_as_raw() {
+		let reqs = vec![json!("just a string"), json!({ "model": "auto", "messages": [] })];
+		let out = sanitize_requests(reqs, None, 16);
+		assert_eq!(out.len(), 2);
+		assert_eq!(out[0]["raw"], json!("just a string"));
+	}
+
+	#[test]
+	fn sanitize_truncates_to_max_requests() {
+		let reqs: Vec<Value> = (0..5).map(|_| json!({ "model": "auto", "messages": [] })).collect();
+		let out = sanitize_requests(reqs, None, 2);
+		assert_eq!(out.len(), 2);
+	}
 }
