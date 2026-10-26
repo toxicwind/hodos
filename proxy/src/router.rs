@@ -2417,11 +2417,6 @@ mod tests {
 				let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
 				assert_eq!(v["choices"][0]["message"]["content"], "hi there");
 			},
-			ExecuteOutcome::Buffered { status, body, .. } => {
-				assert_eq!(status, 200);
-				let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-				assert_eq!(v["choices"][0]["message"]["content"], "hi there");
-			},
 			ExecuteOutcome::Coalesced(shared) => {
 				// Coalescing is on by default; a lone leader still returns via
 				// Coalesced with the same body bytes.
@@ -2430,6 +2425,62 @@ mod tests {
 				assert_eq!(v["choices"][0]["message"]["content"], "hi there");
 			},
 			ExecuteOutcome::Response(_) => panic!("expected Buffered/Coalesced, got Response"),
+		}
+	}
+
+	#[tokio::test]
+	async fn empty_completion_guard_fails_over_and_errors_when_all_empty() {
+		// A single provider returning a 2xx WITH NO substance must trip the
+		// empty-completion substance guard and surface the "all candidates
+		// returned empty" error (surfaced as the last_error).
+		use tokio::io::{AsyncReadExt, AsyncWriteExt};
+		let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let addr = listener.local_addr().unwrap();
+		let base = format!("http://{}", addr);
+		let server = tokio::spawn(async move {
+			let (mut sock, _) = listener.accept().await.unwrap();
+			let mut buf = [0u8; 4096];
+			let _n = sock.read(&mut buf).await.unwrap();
+			let body = r#"{"id":"m1","object":"chat.completion","created":1,"model":"m","choices":[],"usage":{}}"#;
+			let resp = format!(
+				"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {len}\r\n\r\n{body}",
+				len = body.len()
+			);
+			sock.write_all(resp.as_bytes()).await.unwrap();
+			sock.flush().await.unwrap();
+			sock.shutdown().await.ok();
+		});
+		let mut def = test_def("mock");
+		def.base_url = base;
+		let r = test_router(vec![def]);
+		r.inner.health.record_health("mock", true, unix_now());
+		let res = r
+			.execute_buffered(ExecuteCtx {
+				http: reqwest::Client::new(),
+				method: reqwest::Method::POST,
+				path_query: "/v1/chat/completions".to_string(),
+				content_type: Some("application/json".into()),
+				accept: Some("application/json".into()),
+				body: Bytes::from_static(br#"{"model":"auto","messages":[{"role":"user","content":"x"}]}"#),
+				model: "auto".to_string(),
+				passthrough: vec![],
+				session: None,
+				deadline: Instant::now() + Duration::from_secs(10),
+				heartbeat: Duration::from_millis(500),
+				request_timeout: Duration::from_secs(10),
+				prefer_lane: None,
+				gated_path: false,
+				promote_reasoning: false,
+				client_gone: Box::new(|| false),
+			})
+			.await;
+		server.await.unwrap();
+		match res {
+			Err(RouteError::Unavailable(msg)) => {
+				assert!(msg.contains("empty") || msg.contains("candidates"), "got: {msg}");
+			},
+			Ok(_) => panic!("empty upstream must fail the guard, but it returned Ok"),
+			_ => panic!("expected Unavailable(empty), got another error variant"),
 		}
 	}
 }
