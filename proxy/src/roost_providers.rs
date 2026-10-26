@@ -97,10 +97,10 @@ pub const PINAX_PROVIDERS: &[PinaxProvider] = &[
         context_lengths: &[],
     },
     PinaxProvider {
-        name: "hodos",
-        display_name: "Hodos (estate multi-provider gateway)",
+        name: "rhodochrosite",
+        display_name: "Rhodochrosite (estate multi-provider gateway)",
         base_url: "http://127.0.0.1:25193/v1",
-        key_env: "HODOS_API_KEY",
+        key_env: "RHODOCHROSITE_API_KEY",
         key_env_alt: "",
         adapter: "none",
         auth: "bearer",
