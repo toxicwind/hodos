@@ -648,6 +648,41 @@ impl RouterHandle {
 				})
 				.unwrap_or(false)
 		});
+		// Context-budget HARD GATE (2M-context handoff premise, live-canary
+		// proven 2026-10-26): a 1.28M-token job sent to a 1M-window provider
+		// 400s upstream. When at least one candidate's declared window fits
+		// `needed`, undersized providers are DROPPED — demote-to-back still
+		// forwarded the only remaining 1M provider. The gate also beats the
+		// sticky pin: a pinned provider that cannot hold the context is the
+		// exact dead-pin failure mode. With no fitting provider, keep the
+		// demoted order (best-effort undersized).
+		if needed > 0 {
+			let (fits, undersized): (Vec<RouteCandidate>, Vec<RouteCandidate>) =
+				demoted.into_iter().partition(|c| {
+					self
+						.runtime(&c.provider)
+						.map(|rt| {
+							rt.def.read().unwrap().context_lengths.get(&c.model)
+								.is_none_or(|limit| *limit >= needed)
+						})
+						.unwrap_or(true)
+				});
+			// The sticky pin is NOT exempt: re-admit it only into the bucket
+			// it actually fits (a pinned provider that cannot hold the
+			// context is the dead-pin failure mode).
+			let pin_in = |set: &[RouteCandidate]| {
+				sticky_lead
+					.as_ref()
+					.map(|p| set.iter().any(|c| c.provider == p.provider))
+					.unwrap_or(false)
+			};
+			if !fits.is_empty() {
+				let lead = if pin_in(&fits) { sticky_lead } else { None };
+				return Self::leading_with_sticky(fits, lead);
+			}
+			let lead = if pin_in(&undersized) { sticky_lead } else { None };
+			return Self::leading_with_sticky(undersized, lead);
+		}
 		Self::leading_with_sticky(demoted, sticky_lead)
 	}
 
@@ -1999,7 +2034,7 @@ mod tests {
 	use super::*;
 
 	#[tokio::test]
-	async fn context_window_demotion_pushes_undersized_to_back() {
+	async fn context_window_hard_gate_drops_undersized_when_a_fitter_exists() {
 		use std::collections::BTreeMap;
 		// Two providers serving the same model: "small" declares a 1000-token
 		// window, "big" declares nothing (never demoted).
@@ -2009,14 +2044,40 @@ mod tests {
 		small.context_lengths = small_ctx;
 		let big = test_def("big");
 		let handle = test_router(vec![small, big]);
-		// Request needs 50000 tokens: "small" declares 1000 -> demoted.
+		// HARD GATE (2M-context handoff, live-canary proven): a job needing
+		// 50000 tokens DROPS the 1000-window provider entirely when a fitting
+		// provider exists — demote-to-back still forwarded the undersized
+		// provider and the upstream 400'd.
 		let cands = handle.select_with_budget("tiny-model", "", None, 50000);
-		assert_eq!(cands.len(), 2);
-		assert_eq!(cands[0].provider, "big", "undeclared window must not demote");
-		assert_eq!(cands[1].provider, "small", "undersized window must go last");
-		// needed == 0 disables demotion entirely.
-		let cands2 = handle.select("tiny-model", "", None);
-		assert_eq!(cands2.len(), 2);
+		assert_eq!(cands.len(), 1, "undersized provider must be dropped");
+		assert_eq!(cands[0].provider, "big");
+		// No fitting provider => keep everything (demoted order, best-effort).
+		let cands2 = handle.select_with_budget("tiny-model", "", None, 500);
+		assert_eq!(cands2.len(), 2, "both fit a 500-token job");
+		// needed == 0 disables the gate entirely.
+		let cands3 = handle.select("tiny-model", "", None);
+		assert_eq!(cands3.len(), 2);
+	}
+
+	#[tokio::test]
+	async fn context_budget_beats_the_sticky_pin() {
+		use std::collections::BTreeMap;
+		// The pinned provider cannot hold the job's context; the unpinned one
+		// can. The gate drops the pin (dead-pin failure mode: sticky burned
+		// the retry budget on a provider that 400s).
+		let mut small = test_def("small");
+		let mut small_ctx = BTreeMap::new();
+		small_ctx.insert("big-model".to_string(), 1000u64);
+		small.context_lengths = small_ctx;
+		let big = test_def("big");
+		let handle = test_router(vec![small, big]);
+		handle
+			.inner
+			.health
+			.set_sticky("sess-9", "small", Duration::from_secs(60), unix_now());
+		let cands = handle.select_with_budget("big-model", "sess-9", Some(Strategy::StickyAffinity), 50000);
+		assert_eq!(cands.len(), 1);
+		assert_eq!(cands[0].provider, "big", "context budget must beat the pin");
 	}
 
 	#[test]
