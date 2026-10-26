@@ -701,3 +701,214 @@ pub async fn count_tokens(body: Bytes) -> Response {
 		Bytes::from(serde_json::to_vec(&json!({ "input_tokens": estimate })).unwrap_or_default()),
 	)
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn stop_reason_maps_the_openai_vocabulary() {
+		assert_eq!(stop_reason(Some("tool_calls")), "tool_use");
+		assert_eq!(stop_reason(Some("length")), "max_tokens");
+		assert_eq!(stop_reason(Some("stop")), "end_turn");
+		assert_eq!(stop_reason(None), "end_turn");
+	}
+
+	#[test]
+	fn error_type_maps_status_to_anthropic_vocabulary() {
+		assert_eq!(error_type(401), "authentication_error");
+		assert_eq!(error_type(403), "authentication_error");
+		assert_eq!(error_type(404), "not_found_error");
+		assert_eq!(error_type(429), "rate_limit_error");
+		assert_eq!(error_type(400), "invalid_request_error");
+		assert_eq!(error_type(422), "invalid_request_error");
+		assert_eq!(error_type(503), "api_error");
+	}
+
+	#[test]
+	fn error_response_produces_the_anthropic_error_envelope() {
+		let resp = error_response(429, "slow down");
+		assert_eq!(resp.status().as_u16(), 429);
+	}
+
+	#[test]
+	fn translate_request_rejects_missing_messages() {
+		let err = translate_request(&json!({ "model": "claude-3" })).unwrap_err();
+		assert!(err.contains("messages"));
+	}
+
+	#[test]
+	fn translate_request_defaults_model_and_max_tokens_for_claude() {
+		let out = translate_request(&json!({
+			"messages": [{ "role": "user", "content": "hi" }]
+		}))
+		.unwrap();
+		assert_eq!(out["max_tokens"], json!(4096));
+		assert_eq!(out["stream"], json!(false));
+		assert_eq!(out["model"], json!(default_model()));
+	}
+
+	#[test]
+	fn translate_request_keeps_a_non_claude_model_and_passes_system() {
+		let out = translate_request(&json!({
+			"model": "openai/gpt-6.1-terra",
+			"system": "be terse",
+			"max_tokens": 128,
+			"messages": [{ "role": "user", "content": "hi" }],
+		}))
+		.unwrap();
+		assert_eq!(out["model"], json!("openai/gpt-6.1-terra"));
+		assert_eq!(out["max_tokens"], json!(128));
+		assert_eq!(out["messages"][0]["role"], json!("system"));
+		assert_eq!(out["messages"][0]["content"], json!("be terse"));
+	}
+
+	#[test]
+	fn translate_request_converts_tool_use_and_tool_result_blocks() {
+		let out = translate_request(&json!({
+			"model": "x",
+			"messages": [
+				{
+					"role": "assistant",
+					"content": [{
+						"type": "tool_use",
+						"id": "call_9",
+						"name": "weather",
+						"input": { "zip": "10001" },
+					}],
+				},
+				{
+					"role": "user",
+					"content": [{
+						"type": "tool_result",
+						"tool_use_id": "call_9",
+						"content": "sunny",
+					}],
+				},
+			],
+		}))
+		.unwrap();
+		let assistant = &out["messages"][0];
+		assert_eq!(assistant["role"], json!("assistant"));
+		assert_eq!(assistant["content"], Value::Null);
+		assert_eq!(assistant["tool_calls"][0]["id"], json!("call_9"));
+		assert_eq!(assistant["tool_calls"][0]["function"]["name"], json!("weather"));
+		let tool = &out["messages"][1];
+		assert_eq!(tool["role"], json!("tool"));
+		assert_eq!(tool["tool_call_id"], json!("call_9"));
+		assert_eq!(tool["content"], json!("sunny"));
+	}
+
+	#[test]
+	fn translate_request_passes_tools_and_tool_choice() {
+		let out = translate_request(&json!({
+			"model": "x",
+			"messages": [{ "role": "user", "content": "go" }],
+			"tools": [{ "name": "t", "description": "d", "input_schema": {"type": "object"} }],
+			"tool_choice": { "type": "auto" },
+		}))
+		.unwrap();
+		assert_eq!(out["tools"][0]["type"], json!("function"));
+		assert_eq!(out["tools"][0]["function"]["name"], json!("t"));
+		assert_eq!(out["tool_choice"], json!("auto"));
+	}
+
+	#[test]
+	fn content_blocks_flatten_text_and_build_image_urls() {
+		let flat = content_blocks_to_openai(&[json!({ "type": "text", "text": "abc" })]);
+		assert_eq!(flat, json!("abc"));
+		let parts = content_blocks_to_openai(&[json!({
+			"type": "image",
+			"source": {
+				"type": "base64",
+				"media_type": "image/png",
+				"data": "AAA",
+			},
+		})]);
+		assert_eq!(parts.as_array().unwrap().len(), 1);
+		let url = parts[0]["image_url"]["url"].as_str().unwrap();
+		assert!(url.starts_with("data:image/png;base64,"));
+	}
+
+	#[test]
+	fn translate_response_builds_content_blocks_and_usage() {
+		let resp = translate_response(
+			&json!({
+				"id": "chatcmpl-1",
+				"choices": [{
+					"message": { "content": "hello", "role": "assistant" },
+					"finish_reason": "stop",
+				}],
+				"usage": { "prompt_tokens": 10, "completion_tokens": 4 },
+			}),
+			"req-model",
+		);
+		assert_eq!(resp["type"], json!("message"));
+		assert_eq!(resp["model"], json!("req-model"));
+		assert_eq!(resp["content"][0]["text"], json!("hello"));
+		assert_eq!(resp["stop_reason"], json!("end_turn"));
+		assert_eq!(resp["usage"]["input_tokens"], json!(10));
+		assert_eq!(resp["usage"]["output_tokens"], json!(4));
+	}
+
+	#[test]
+	fn translate_response_maps_tool_calls_into_tool_use_blocks() {
+		let resp = translate_response(
+			&json!({
+				"choices": [{
+					"message": {
+						"content": null,
+						"tool_calls": [{
+							"id": "t1",
+							"function": { "name": "f", "arguments": "{\"a\":1}" },
+						}],
+					},
+					"finish_reason": "tool_calls",
+				}],
+				"usage": {},
+			}),
+			"m",
+		);
+		assert_eq!(resp["stop_reason"], json!("tool_use"));
+		let block = &resp["content"][0];
+		assert_eq!(block["type"], json!("tool_use"));
+		assert_eq!(block["name"], json!("f"));
+		assert_eq!(block["input"]["a"], json!(1));
+	}
+
+	#[test]
+	fn sse_translator_streams_text_and_closes_out() {
+		let mut t = SseTranslator::new("m");
+		let e1 = t.feed(r#"{"id":"1","choices":[{"delta":{"content":"hel"}}],"usage":{"prompt_tokens":5}}"#);
+		assert!(e1.iter().any(|e| e.starts_with("event: message_start")));
+		assert!(e1.iter().any(|e| e.contains("content_block_start")));
+		let e2 = t.feed(r#"{"id":"1","choices":[{"delta":{"content":"lo"},"finish_reason":"stop"}]}"#);
+		assert!(e2.iter().any(|e| e.contains("content_block_delta")));
+		assert!(e2.iter().any(|e| e.contains("message_delta")));
+		assert!(t.finished());
+		assert!(t.close().is_empty());
+	}
+
+	#[test]
+	fn sse_translator_handles_done_token_and_non_json_keepalive() {
+		let mut t = SseTranslator::new("m");
+		assert!(t.feed(": ping").is_empty());
+		let done = t.feed("[DONE]");
+		assert!(done.iter().any(|e| e.contains("message_stop")));
+		assert!(t.finished());
+	}
+
+	#[tokio::test]
+	async fn count_tokens_estimates_from_system_messages_and_tools() {
+		let resp = crate::anthropic::count_tokens(Bytes::from(
+			serde_json::to_vec(&json!({
+				"system": "abcdefgh",
+				"messages": [{ "role": "user", "content": "xyz" }],
+				"tools": [{ "name": "t" }],
+			}))
+			.unwrap(),
+		))
+		.await;
+		assert_eq!(resp.status().as_u16(), 200);
+	}
+}

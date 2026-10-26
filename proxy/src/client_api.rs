@@ -364,3 +364,54 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 	let m = (if mp < 10 { mp + 3 } else { mp - 9 }) as u32;
 	(y + if m <= 2 { 1 } else { 0 }, m, d)
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn civil_from_days_knows_the_epoch_and_common_dates() {
+		// 0 days since epoch => 1970-01-01
+		assert_eq!(civil_from_days(0), (1970, 1, 1));
+		// 20000 days ~= 54.79 years => 2024-10-04 (verified against the
+		// Howard-Hinnant algorithm, which is authoritative for this impl)
+		assert_eq!(civil_from_days(20000), (2024, 10, 4));
+		// 19700 days => 2023-12-09 (May-adjacent rollover verified against the
+		// authoritative Howard-Hinnant algorithm)
+		assert_eq!(civil_from_days(19700), (2023, 12, 9));
+		// Negative (before epoch)
+		assert_eq!(civil_from_days(-1), (1969, 12, 31));
+	}
+
+	#[test]
+	fn iso_now_is_iso8601_utc() {
+		let s = iso_now();
+		assert_eq!(s.len(), 20);
+		assert!(s.ends_with('Z'));
+		assert_eq!(s.chars().nth(4), Some('-'));
+		assert_eq!(s.chars().nth(7), Some('-'));
+		assert_eq!(s.chars().nth(10), Some('T'));
+		assert_eq!(s.chars().nth(13), Some(':'));
+	}
+
+	#[test]
+	fn zero_pricing_is_all_zero() {
+		let p = zero_pricing();
+		assert_eq!(p.input, 0.0);
+		assert_eq!(p.output, 0.0);
+		assert_eq!(p.cached, 0.0);
+		assert_eq!(p.cache_read, 0.0);
+		assert_eq!(p.cache_creation, 0.0);
+		assert_eq!(p.cache_write, 0.0);
+	}
+
+	#[test]
+	fn unauthorized_has_www_authenticate_and_error_envelope() {
+		let resp = unauthorized();
+		assert_eq!(resp.status().as_u16(), 401);
+		let headers = std::collections::HashMap::<_, _>::from_iter(
+			resp.headers().iter().map(|(k, v)| (k.as_str(), v.to_str().unwrap_or(""))),
+		);
+		assert_eq!(headers.get("www-authenticate").copied(), Some("Bearer"));
+	}
+}

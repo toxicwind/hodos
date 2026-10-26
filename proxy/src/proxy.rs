@@ -844,6 +844,24 @@ async fn buffered(
 			record_request(&ctx, "499");
 			bad_gateway()
 		},
+		Err(crate::router::RouteError::UnknownModel(msg)) => {
+			// Declared-route gate: honest 404 with the available lanes, so
+			// callers (tau model fallback, kappa, curl) see the catalog
+			// contract instead of a burned retry budget on a dead upstream.
+			record_request(&ctx, "404");
+			let body = serde_json::json!({
+				"error": {
+					"code": "undeclared_model",
+					"message": msg,
+					"declared_lanes": crate::routing_intel::ESTATE_LANES,
+				}
+			});
+			Response::builder()
+				.status(StatusCode::NOT_FOUND)
+				.header(header::CONTENT_TYPE, "application/json")
+				.body(Body::from(body.to_string()))
+				.unwrap()
+		},
 		Err(crate::router::RouteError::RateLimited(_))
 		| Err(crate::router::RouteError::Unavailable(_)) => {
 			record_request(&ctx, "502");

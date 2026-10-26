@@ -220,6 +220,11 @@ impl RouterHandle {
 pub enum RouteError {
 	/// No provider could serve: every candidate failed or was gated.
 	Unavailable(String),
+	/// The requested id is not declared in the provider catalog and no
+	/// non-wildcard provider serves it. Fail-fast client-side (404 with
+	/// the declared lanes) instead of a silent wildcard passthrough that
+	/// burns retries on upstream 404s.
+	UnknownModel(String),
 	/// A provider was chosen but its token bucket was dry.
 	RateLimited(String),
 	/// The request waited past its deadline for a slot or permit.
@@ -532,12 +537,20 @@ impl RouterHandle {
 		// usable: this is AstMatrix's sticky_affinity contract (its shipped
 		// code looked the sticky up but never stored it; we store it, so the
 		// strategy actually works as documented).
+		//
+		// The pin leads the candidate list but is NO LONGER the whole list:
+		// a pinned provider that starts lying (upstream 404 on a route it
+		// claimed) used to leave the retry loop with exactly one candidate
+		// — the tau session burned its full retry budget on the same dead
+		// upstream while fresh curls succeeded. Envoy outlier semantics:
+		// pin first, then the ordinary selection as failover.
+		let mut sticky_lead: Option<RouteCandidate> = None;
 		if strategy == Strategy::StickyAffinity {
 			if let Some(provider) = self.inner.health.get_sticky(session, now_unix) {
 				if let Some(rt) = self.runtime(&provider) {
 					if self.candidate_ok(&rt) {
 						let m = rt.def.read().unwrap().rewrite_model(model);
-						return vec![RouteCandidate { provider, model: m, strategy }];
+						sticky_lead = Some(RouteCandidate { provider, model: m, strategy });
 					}
 				}
 			}
@@ -617,7 +630,7 @@ impl RouterHandle {
 			})
 			.collect();
 		if needed == 0 {
-			return collected;
+			return Self::leading_with_sticky(collected, sticky_lead);
 		}
 		// Context-window auto-demotion: a candidate whose declared window
 		// provably cannot hold this request goes to the back, not dropped.
@@ -635,7 +648,20 @@ impl RouterHandle {
 				})
 				.unwrap_or(false)
 		});
-		demoted
+		Self::leading_with_sticky(demoted, sticky_lead)
+	}
+
+	/// Prepend the sticky pin to a candidate list, dropping any duplicate of
+	/// the pinned provider so the pin leads exactly once (failover still
+	/// rides along behind it — Envoy outlier semantics).
+	fn leading_with_sticky(
+		mut candidates: Vec<RouteCandidate>,
+		pin: Option<RouteCandidate>,
+	) -> Vec<RouteCandidate> {
+		let Some(pin) = pin else { return candidates };
+		candidates.retain(|c| c.provider != pin.provider);
+		candidates.insert(0, pin);
+		candidates
 	}
 
 	/// Select with a full routing decision record (AstrLink pattern).
@@ -1627,6 +1653,24 @@ impl RouterHandle {
 		if candidates.is_empty() {
 			return Err(RouteError::Unavailable(format!("no provider serves model '{model}'")));
 		}
+		// Declared-route gate (LiteLLM model_list semantics, estate
+		// namespace only): an `estate/<lane>` id the fleet never declared
+		// must fail fast here instead of wildcard-fanning-out to upstreams
+		// that answer 404. Fresh curls pass `estate/auto` while sticky tau
+		// sessions burned their retry budget on a lying upstream — the
+		// undeclared lane must never reach that rotation at all. Unknown
+		// ids outside the estate namespace keep the documented wildcard
+		// passthrough (old NVIDIA proxy contract).
+		if crate::routing_intel::is_undeclared_estate_lane(&model) {
+			return Err(RouteError::UnknownModel(format!(
+				"estate lane '{model}' is not declared; implemented lanes: {lanes} (or `auto`/`free`)",
+				lanes = crate::routing_intel::ESTATE_LANES
+					.iter()
+					.map(|l| format!("estate/{l}"))
+					.collect::<Vec<_>>()
+					.join(", "),
+			)));
+		}
 		// Coalescing is keyed on request identity and owned by the first
 		// candidate's runtime (the preferred provider for this request).
 		let mut lead: Option<crate::coalescer::Lead> = if routing.enable_coalescing {
@@ -1757,6 +1801,36 @@ impl RouterHandle {
 						);
 						last_error =
 							RouteError::Unavailable(format!("{}: upstream {status}", candidate.provider));
+					} else if status == 404 && is_chat_completions_path(&path_query) {
+						// Upstream 404 on the chat lane: the provider does
+						// not serve this id. Fail over to the next
+						// candidate instead of surfacing a dead upstream to
+						// the client (Envoy outlier semantics — a lying
+						// provider must not win the rotation). For ids the
+						// catalog DECLARES, a 404 is also a provider-health
+						// signal (the provider lied about serving it), so
+						// the circuit records a failure; for undeclared
+						// wildcard probes it stays a catalog signal only
+						// (empty-strike quarantine, circuit untouched).
+						r.text().await.unwrap_or_default();
+						self.finish_failure(&acq, 404, false, None);
+						if crate::routing_intel::is_declared_serve(&model) {
+							let now_unix = unix_now();
+							if let Some(rt) = self.runtime(&acq.provider) {
+								rt.circuit.lock().unwrap().record_failure(now_unix);
+							}
+							self.inner.health.record_health(&acq.provider, false, now_unix);
+						}
+						decision.write().unwrap().push_attempt(
+							&candidate.provider,
+							404,
+							acq.attempt_started.elapsed(),
+						);
+						last_error = RouteError::Unavailable(format!(
+							"{}: upstream 404 (model '{}' not served)",
+							candidate.provider, acq.model
+						));
+						continue;
 					} else {
 						// Empty-completion substance guard: a 2xx chat
 						// completion with no content and no tool calls is a
@@ -2053,8 +2127,13 @@ mod tests {
 			.health
 			.set_sticky("sess-1", "a", Duration::from_secs(60), unix_now());
 		let cands = r.select("m", "sess-1", Some(Strategy::StickyAffinity));
-		assert_eq!(cands.len(), 1);
+		// The pin leads the list BUT the ordinary selection rides along as a
+		// failover (Envoy outlier semantics): a pinned provider that starts
+		// lying (upstream 404) must let the retry loop move to a healthy
+		// candidate instead of burning the whole budget on the dead pin.
+		assert!(!cands.is_empty());
 		assert_eq!(cands[0].provider, "a");
+		assert!(cands.len() >= 2, "sticky must carry a failover candidate");
 	}
 
 	#[tokio::test]
