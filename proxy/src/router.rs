@@ -2483,4 +2483,101 @@ mod tests {
 			_ => panic!("expected Unavailable(empty), got another error variant"),
 		}
 	}
+
+	#[tokio::test]
+	async fn retryable_429_fails_over_to_a_healthy_candidate() {
+		// Provider "bad" upstream 429s (retryable); provider "good" upstream
+		// succeeds. The exec loop must record the failure on "bad" (circuit,
+		// health, lane cooldown) and return "good"'s buffered body.
+		use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+		let bad = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let bad_addr = bad.local_addr().unwrap();
+		let bad_base = format!("http://{}", bad_addr);
+		let bad_server = tokio::spawn(async move {
+			let (mut sock, _) = bad.accept().await.unwrap();
+			let mut buf = [0u8; 4096];
+			let _n = sock.read(&mut buf).await.unwrap();
+			let body = r#"{"error":{"type":"rate_limit_error","message":"slow down"}}"#;
+			let resp = format!(
+				"HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nRetry-After: 1\r\nContent-Length: {len}\r\n\r\n{body}",
+				len = body.len()
+			);
+			sock.write_all(resp.as_bytes()).await.unwrap();
+			sock.flush().await.unwrap();
+			sock.shutdown().await.ok();
+		});
+
+		let good = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let good_addr = good.local_addr().unwrap();
+		let good_base = format!("http://{}", good_addr);
+		let good_server = tokio::spawn(async move {
+			let (mut sock, _) = good.accept().await.unwrap();
+			let mut buf = [0u8; 4096];
+			let _n = sock.read(&mut buf).await.unwrap();
+			let body = r#"{"id":"g1","choices":[{"message":{"content":"healthy","role":"assistant"},"finish_reason":"stop"}],"usage":{}}"#;
+			let resp = format!(
+				"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {len}\r\n\r\n{body}",
+				len = body.len()
+			);
+			sock.write_all(resp.as_bytes()).await.unwrap();
+			sock.flush().await.unwrap();
+			sock.shutdown().await.ok();
+		});
+
+		let mut bad_def = test_def("bad");
+		bad_def.base_url = bad_base;
+		bad_def.free_tier = true;
+		let mut good_def = test_def("good");
+		good_def.base_url = good_base;
+		good_def.free_tier = true;
+		let r = test_router(vec![bad_def, good_def]);
+		r.inner.health.record_health("bad", true, unix_now());
+		r.inner.health.record_health("good", true, unix_now());
+
+		let outcome = r
+			.execute_buffered(ExecuteCtx {
+				http: reqwest::Client::new(),
+				method: reqwest::Method::POST,
+				path_query: "/v1/chat/completions".to_string(),
+				content_type: Some("application/json".into()),
+				accept: Some("application/json".into()),
+				body: Bytes::from_static(br#"{"model":"free","messages":[{"role":"user","content":"x"}]}"#),
+				model: "free".to_string(),
+				passthrough: vec![],
+				session: None,
+				deadline: Instant::now() + Duration::from_secs(10),
+				heartbeat: Duration::from_millis(500),
+				request_timeout: Duration::from_secs(10),
+				prefer_lane: None,
+				gated_path: false,
+				promote_reasoning: false,
+				client_gone: Box::new(|| false),
+			})
+			.await
+			.unwrap();
+
+		bad_server.await.unwrap();
+		good_server.await.unwrap();
+
+		// "bad" recorded a circuit failure (429 is retryable + provider health
+		// failure). "good" won and returned the healthy body.
+		let bad_rt = r.runtime("bad").unwrap();
+		assert!(!r.inner.health.is_healthy("bad"), "429 must mark bad unhealthy");
+		assert!(r.inner.health.is_healthy("good"), "good must stay healthy");
+
+		match outcome {
+			ExecuteOutcome::Buffered { status, body, .. } => {
+				assert_eq!(status, 200);
+				let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+				assert_eq!(v["choices"][0]["message"]["content"], "healthy");
+			},
+			ExecuteOutcome::Coalesced(shared) => {
+				assert_eq!(shared.status, 200);
+				let v: serde_json::Value = serde_json::from_slice(&shared.body).unwrap();
+				assert_eq!(v["choices"][0]["message"]["content"], "healthy");
+			},
+			ExecuteOutcome::Response(_) => panic!("expected Buffered/Coalesced from good"),
+		}
+	}
 }
