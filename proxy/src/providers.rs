@@ -132,7 +132,7 @@ pub fn resolve_key_material(key: &ProviderKey) -> Option<String> {
 
 /// The routing strategy for a model with more than one usable provider.
 /// Names intentionally match AstMatrix's configured strategy identifiers so
-/// existing Herd/router configs keep meaning them.
+/// existing Bornite/router configs keep meaning them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Strategy {
@@ -159,7 +159,7 @@ pub enum Strategy {
 }
 
 impl Strategy {
-	/// Parse a strategy name the way Herd config files spell them.
+	/// Parse a strategy name the way Bornite config files spell them.
 	pub fn parse(name: &str) -> Option<Strategy> {
 		match name {
 			"hybrid" => Some(Strategy::Hybrid),
@@ -258,7 +258,7 @@ impl Default for RoutingCfg {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderDef {
 	/// Stable identifier: `nvidia`, `openrouter`, ... Matches AstMatrix IDs
-	/// so Herd config references keep resolving.
+	/// so Bornite config references keep resolving.
 	pub name:            String,
 	#[serde(default)]
 	pub base_url:        String,
@@ -970,7 +970,7 @@ mod tests {
 		assert_eq!(
 			normalize(copy),
 			normalize(generated),
-			"roost_providers.rs drifted from pinax/generated/providers.rs"
+			"roost_providers.rs drifted from mimetite/generated/providers.rs"
 		);
 	}
 

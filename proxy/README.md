@@ -61,7 +61,7 @@ Every provider has a `ProviderDef` (`providers.rs`): a stable `name`, `base_url`
 `weight`, `free_tier`, `default_rpm`, and `context_lengths`.
 
 Config-order routing (8 strategies, `Strategy::parse` names match AstMatrix so
-Herd configs keep meaning them):
+Bornite configs keep meaning them):
 
 | Strategy           | Behavior                                                     |
 | ------------------ | ------------------------------------------------------------ |
@@ -158,7 +158,7 @@ settings now live in the dashboard.
 | `proxy.rs`                                  | `/v1` request handling (deadline header, pacing, streaming)  |
 | `router.rs`                                 | the multi-provider router: strategies, admission, failover   |
 | `providers.rs`                              | provider/model/key schema + 13 seeded provider registry      |
-| `pinax_providers.rs` / `roost_providers.rs` | provider-detail registries                                   |
+| `mimetite_providers.rs` / `roost_providers.rs` | provider-detail registries                                   |
 | `ratelimit.rs`                              | per-provider token bucket                                    |
 | `dispatch.rs`                               | FIFO slot dispatcher (25 ms grant spacing)                   |
 | `pool.rs`                                   | per-key lane pool, 61 s sliding windows                      |

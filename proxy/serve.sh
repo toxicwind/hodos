@@ -11,7 +11,7 @@ set -euo pipefail
 # mistral, github, cerebras, freeinference) resolve their API keys at
 # runtime. Without this only the inline-key NVIDIA provider was live and
 # every key_env provider's models 404'd. Same pattern as
-# forge/router/cuttinggate/cuttinggate-serve.sh. Secrets stay in the
+# forge/router/chalcopyrite/chalcopyrite-serve.sh. Secrets stay in the
 # vault; this script only exports them into the daemon's env.
 if [[ -f "$HOME/.secrets" ]]; then
   set -a

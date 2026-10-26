@@ -2,7 +2,7 @@
  * probe-catalogs.ts — rhodochrosite native catalog prober.
  *
  * Merges the estate's provider catalogs into ONE live-probed model/limit map:
- *   1. pinax providers            (ranch/pinax/generated/providers.json) — where providers live
+ *   1. mimetite providers            (ranch/mimetite/generated/providers.json) — where providers live
  *   2. api-evangelist/nvidia-nim  (submodule reference/nvidia-nim)       — NIM API surfaces + policies
  *   3. api-evangelist/nvidia      (submodule reference/nvidia)           — broader NVIDIA limits/llms
  *
@@ -23,9 +23,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const REF = join(here, "..", "reference");
 
 // ---- sources (configurable for tests) -------------------------------------
-const PINAX_PROVIDERS =
-  process.env.PINAX_PROVIDERS_JSON ??
-  "/home/toxic/estate/ranch/pinax/generated/providers.json";
+const MIMETITE_PROVIDERS =
+  process.env.MIMETITE_PROVIDERS_JSON ??
+  "/home/toxic/estate/ranch/mimetite/generated/providers.json";
 const NIM_RATE_LIMITS =
   process.env.NIM_RATE_LIMITS_YML ??
   join(REF, "nvidia-nim", "rate-limits", "nvidia-nim-rate-limits.yml");
@@ -356,10 +356,10 @@ export async function buildCatalog(): Promise<{
   rates: { source: string; policies: RatePolicy[] }[];
   summary: Record<string, number>;
 }> {
-  // 1. pinax providers
+  // 1. mimetite providers
   let providers: Array<Record<string, unknown>> = [];
   try {
-    const raw = JSON.parse(readFileSync(PINAX_PROVIDERS, "utf8")) as {
+    const raw = JSON.parse(readFileSync(MIMETITE_PROVIDERS, "utf8")) as {
       providers?: Array<Record<string, unknown>>;
     };
     providers = Array.isArray(raw.providers) ? raw.providers : [];
@@ -408,7 +408,7 @@ export async function buildCatalog(): Promise<{
 
   return {
     generatedAt: new Date().toISOString(),
-    sources: [PINAX_PROVIDERS, NIM_RATE_LIMITS, NVIDIA_RATE_LIMITS],
+    sources: [MIMETITE_PROVIDERS, NIM_RATE_LIMITS, NVIDIA_RATE_LIMITS],
     providers: results,
     checks: results.map(toSyntheticCheck),
     rates: rateSources,

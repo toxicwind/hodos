@@ -4,7 +4,7 @@
 // Generated at: 2026-10-25T21:56:02.000Z
 
 /// Provenance of the Mimetite catalog revision this module was generated from.
-pub const PINAX_PROVENANCE: &str = "@toxicwind/mimetite src/data.ts";
+pub const MIMETITE_PROVENANCE: &str = "@toxicwind/mimetite src/data.ts";
 
 /// One provider's wire data, generated from the Mimetite catalog.
 /// Flock builds its operational ProviderDefs from this table merged with
@@ -35,7 +35,7 @@ pub struct PinaxProvider {
     pub router_local: bool,
     /// Disabled providers are never fetched and never served.
     pub enabled: bool,
-    /// Cold-start seeds ONLY. May name dead IDs — filter PINAX_DEAD_IDS.
+    /// Cold-start seeds ONLY. May name dead IDs — filter MIMETITE_DEAD_IDS.
     pub seeds: &'static [&'static str],
     /// Adapter "static": the model list, carried in the definition.
     pub static_models: &'static [&'static str],
@@ -44,7 +44,7 @@ pub struct PinaxProvider {
 }
 
 /// The canonical provider table, generated from the Mimetite catalog.
-pub const PINAX_PROVIDERS: &[PinaxProvider] = &[
+pub const MIMETITE_PROVIDERS: &[PinaxProvider] = &[
     PinaxProvider {
         name: "kimi-auto",
         display_name: "kimi-auto shim",
@@ -848,10 +848,10 @@ pub const PINAX_PROVIDERS: &[PinaxProvider] = &[
 
 /// Permanent EOL tier (hand-managed). Never served, never re-admitted:
 /// filter these out of seeds and live listings alike.
-pub const PINAX_DEAD_IDS: &[&str] = &["llama-3.3-70b-versatile", "meta-llama/llama-3.1-8b-instruct", "meta-llama/llama-3.3-70b-instruct", "meta-llama/llama-3.3-70b-instruct:free", "meta-llama/llama-4-scout-17b-16e-instruct", "meta/llama-3.1-8b-instruct", "meta/llama-3.3-70b-instruct", "moonshotai/kimi-k2-instruct", "nousresearch/hermes-3-llama-3.1-405b:free", "nvidia/nemotron-3-nano-30b-a3b:free", "openai/gpt-oss-20b:free", "poolside/laguna-m.1:free", "qwen/qwen3-32b", "qwen/qwen3-coder:free", "qwen/qwen3.6-27b", "tencent/hy3:free"];
+pub const MIMETITE_DEAD_IDS: &[&str] = &["llama-3.3-70b-versatile", "meta-llama/llama-3.1-8b-instruct", "meta-llama/llama-3.3-70b-instruct", "meta-llama/llama-3.3-70b-instruct:free", "meta-llama/llama-4-scout-17b-16e-instruct", "meta/llama-3.1-8b-instruct", "meta/llama-3.3-70b-instruct", "moonshotai/kimi-k2-instruct", "nousresearch/hermes-3-llama-3.1-405b:free", "nvidia/nemotron-3-nano-30b-a3b:free", "openai/gpt-oss-20b:free", "poolside/laguna-m.1:free", "qwen/qwen3-32b", "qwen/qwen3-coder:free", "qwen/qwen3.6-27b", "tencent/hy3:free"];
 
 /// Friendly alias -> (provider, canonical model id) (UX layer).
-pub const PINAX_ALIASES: &[(&str, &str, &str)] = &[
+pub const MIMETITE_ALIASES: &[(&str, &str, &str)] = &[
     ("gemini-2.5-flash", "google", "models/gemini-2.5-flash"),
     ("gemini-3-flash", "google", "models/gemini-3-flash-preview"),
     ("gemini-3.1-pro", "google", "models/gemini-3.1-pro-preview"),
@@ -880,7 +880,7 @@ pub const PINAX_ALIASES: &[(&str, &str, &str)] = &[
 
 // Backwards-compatibility aliases for legacy consumers.
 pub type RoostProvider = PinaxProvider;
-pub const ROOST_PROVENANCE: &str = PINAX_PROVENANCE;
-pub const ROOST_PROVIDERS: &[PinaxProvider] = PINAX_PROVIDERS;
-pub const ROOST_DEAD_IDS: &[&str] = PINAX_DEAD_IDS;
-pub const ROOST_ALIASES: &[(&str, &str, &str)] = PINAX_ALIASES;
+pub const ROOST_PROVENANCE: &str = MIMETITE_PROVENANCE;
+pub const ROOST_PROVIDERS: &[PinaxProvider] = MIMETITE_PROVIDERS;
+pub const ROOST_DEAD_IDS: &[&str] = MIMETITE_DEAD_IDS;
+pub const ROOST_ALIASES: &[(&str, &str, &str)] = MIMETITE_ALIASES;

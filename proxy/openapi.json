@@ -2488,7 +2488,7 @@
       },
       "Strategy": {
         "type": "string",
-        "description": "The routing strategy for a model with more than one usable provider.\nNames intentionally match AstMatrix's configured strategy identifiers so\nexisting Herd/router configs keep meaning them.",
+        "description": "The routing strategy for a model with more than one usable provider.\nNames intentionally match AstMatrix's configured strategy identifiers so\nexisting Bornite/router configs keep meaning them.",
         "enum": [
           "hybrid",
           "ast_race",

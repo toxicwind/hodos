@@ -4,7 +4,7 @@
 //! invoked it on any request path. Here it sits on the buffered (non-
 //! streaming) request path: identical in-flight POSTs share one upstream
 //! call, and every waiter receives the same response. This is the thundering-
-//! herd fix AstMatrix declared but never shipped.
+//! bornite fix AstMatrix declared but never shipped.
 //!
 //! Streaming requests never coalesce (each SSE stream is its own consumer).
 

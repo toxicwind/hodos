@@ -12,7 +12,7 @@ mod governor;
 mod health;
 mod history;
 mod observation;
-mod pinax_providers;
+mod mimetite_providers;
 mod roost_providers;
 pub mod model_ref;
 mod pool;

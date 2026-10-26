@@ -1,5 +1,5 @@
 //! The provider router: Rhodochrosite's multi-provider remote API/completions
-//! subsystem, absorbing AstMatrix and nim-proxy behind Herd `:25100`.
+//! subsystem, absorbing AstMatrix and nim-proxy behind Bornite `:25100`.
 //!
 //! One [`ProviderRuntime`] per provider. Each runtime owns exactly the
 //! machinery the old single-upstream proxy had — a [`Pool`] of key lanes
