@@ -845,3 +845,37 @@ mod dashboard_lock_tests {
 		);
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn env_or_uses_default_when_unset() {
+		std::env::remove_var("RHODO_NO_SUCH_VAR");
+		assert_eq!(env_or("RHODO_NO_SUCH_VAR", "fallback"), "fallback");
+		// A set var wins.
+		std::env::set_var("RHODO_NO_SUCH_VAR", "real");
+		assert_eq!(env_or("RHODO_NO_SUCH_VAR", "fallback"), "real");
+		std::env::remove_var("RHODO_NO_SUCH_VAR");
+	}
+
+	#[test]
+	fn is_presentation_path_matches_routes_and_assets() {
+		assert!(is_presentation_path(routes::ROOT));
+		assert!(is_presentation_path(routes::LOGIN));
+		assert!(is_presentation_path(routes::SETUP));
+		assert!(is_presentation_path("/assets/app.js"));
+		assert!(!is_presentation_path("/v1/chat/completions"));
+		assert!(!is_presentation_path("/api/providers"));
+	}
+
+	#[test]
+	fn unix_now_seconds_is_monotonicish() {
+		let a = unix_now();
+		let b = unix_now();
+		assert!(b >= a, "unix_now must not go backwards");
+		// Sanity: it is seconds-since-epoch in 2026 (a 10-digit value).
+		assert!(a > 1_700_000_000, "unix_now should be epoch seconds in 2026, got {a}");
+	}
+}
