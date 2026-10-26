@@ -194,7 +194,7 @@ declare -A ROUTERS=(
   [ts]="$HOME/estate/ranch/rhodochrosite/ts/strategy/router.ts"
   [py]="$HOME/estate/ranch/mesh/router/rhodochrosite-py/router_server.py"
   [sov]="$HOME/estate/ranch/mesh/router/estate-scripts-router/estate-scripts-router-ts/router.ts"
-  [cut]="$HOME/estate/ranch/mesh/proxy/chalcopyrite/src/strategy/router.ts"
+  [cut]="$HOME/pens/geode/products/chalcopyrite/src/strategy/router.ts"
 )
 for k in "${!ROUTERS[@]}"; do
   p="${ROUTERS[$k]}"

@@ -21,6 +21,6 @@ fi
 export DATA_DIR="${DATA_DIR:-${RHODOCHROSITE_DATA_DIR:-$HOME/.rhodochrosite/nim-data}}"
 export HOST="${HOST:-${RHODOCHROSITE_HOST:-127.0.0.1}}"
 export PORT="${PORT:-${RHODOCHROSITE_PORT:-25193}}"
-BIN="/home/toxic/pens/olympus/products/rhodochrosite/proxy/target/release/rhodochrosite"
+BIN="/home/toxic/pens/geode/products/rhodochrosite/proxy/target/debug/rhodochrosite"
 [[ -x "$BIN" ]] || { echo "rhodochrosite binary missing at $BIN — run cargo build --release in ranch/rhodochrosite/proxy" >&2; exit 1; }
 exec "$BIN"
