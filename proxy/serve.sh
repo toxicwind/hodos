@@ -11,14 +11,14 @@ set -euo pipefail
 # mistral, github, cerebras, freeinference) resolve their API keys at
 # runtime. Without this only the inline-key NVIDIA provider was live and
 # every key_env provider's models 404'd. Same pattern as
-# forge/router/chalcopyrite/chalcopyrite-serve.sh. Secrets stay in the
-# vault; this script only exports them into the daemon's env.
-if [[ -f "$HOME/.secrets" ]]; then
-  set -a
-  . "$HOME/.secrets"
-  set +a
-fi
-export DATA_DIR="${DATA_DIR:-${RHODOCHROSITE_DATA_DIR:-$HOME/.rhodochrosite/nim-data}}"
+# forge/router/chalcopyrite/chalcopyrite-serve.sh. Secrets live in the
+# secretsmith KEYRING (SSOT 2026-10-18); ~/.secrets is DELETED (2026-10-26).
+# 2026-10-26: source the keyring env dump directly.
+_kr_env="$(mktemp)"
+secretsmith env 2>/dev/null | grep -aE '^[A-Za-z_][A-Za-z0-9_]*=' > "$_kr_env"
+[[ -s "$_kr_env" ]] && . "$_kr_env"
+rm -f "$_kr_env"
+export DATA_DIR="${DATA_DIR:-${RHODOCHROSITE_DATA_DIR:-$HOME/.hodos-data}}"
 export HOST="${HOST:-${RHODOCHROSITE_HOST:-127.0.0.1}}"
 export PORT="${PORT:-${RHODOCHROSITE_PORT:-25193}}"
 BIN="/home/toxic/pens/geode/products/rhodochrosite/proxy/target/debug/rhodochrosite"
