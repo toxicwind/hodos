@@ -2349,4 +2349,87 @@ mod tests {
 		let stats = rt.pool.read().unwrap().lane_stats();
 		assert!(stats.iter().any(|s| s.key == "k2"), "new key lane missing after rebuild: {stats:?}");
 	}
+
+	#[tokio::test]
+	async fn execute_buffered_round_trips_a_mock_upstream_end_to_end() {
+		// Integration: a real local HTTP server answers a buffered chat
+		// completion; the router drives the FULL exec loop (selection,
+		// admission stack, model rewrite, upstream send, substance guard,
+		// success recording) against it.
+		use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+		let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let addr = listener.local_addr().unwrap();
+		let base = format!("http://{}", addr);
+
+		// Serve one buffered completion, capture the auth header it saw.
+		let server = tokio::spawn(async move {
+			let (mut sock, _) = listener.accept().await.unwrap();
+			let mut buf = [0u8; 4096];
+			let n = sock.read(&mut buf).await.unwrap();
+			let req = String::from_utf8_lossy(&buf[..n]).to_string();
+			let has_auth = req.contains("Authorization: Bearer k");
+			let is_completion = req.contains("/v1/chat/completions");
+			let body = r#"{"id":"m1","choices":[{"message":{"content":"hi there","role":"assistant"},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":2}}"#;
+			let resp = format!(
+				"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {len}\r\nX-Mock-Auth: {has_auth}\r\nX-Mock-Completion: {is_completion}\r\n\r\n{body}",
+				len = body.len(),
+				has_auth = has_auth,
+				is_completion = is_completion,
+			);
+			sock.write_all(resp.as_bytes()).await.unwrap();
+			sock.flush().await.unwrap();
+			sock.shutdown().await.ok();
+		});
+
+		// Provider pointed at the mock upstream.
+		let mut def = test_def("mock");
+		def.base_url = base.clone();
+		let r = test_router(vec![def]);
+		r.inner.health.record_health("mock", true, unix_now());
+
+		let outcome = r
+			.execute_buffered(ExecuteCtx {
+				http: reqwest::Client::new(),
+				method: reqwest::Method::POST,
+				path_query: "/v1/chat/completions".to_string(),
+				content_type: Some("application/json".into()),
+				accept: Some("application/json".into()),
+				body: Bytes::from_static(br#"{"model":"auto","messages":[{"role":"user","content":"hi"}]}"#),
+				model: "auto".to_string(),
+				passthrough: vec![],
+				session: None,
+				deadline: Instant::now() + Duration::from_secs(10),
+				heartbeat: Duration::from_millis(500),
+				request_timeout: Duration::from_secs(10),
+				prefer_lane: None,
+				gated_path: false,
+				promote_reasoning: false,
+				client_gone: Box::new(|| false),
+			})
+			.await
+			.unwrap();
+
+		server.await.unwrap();
+		match outcome {
+			ExecuteOutcome::Buffered { status, body, .. } => {
+				assert_eq!(status, 200);
+				let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+				assert_eq!(v["choices"][0]["message"]["content"], "hi there");
+			},
+			ExecuteOutcome::Buffered { status, body, .. } => {
+				assert_eq!(status, 200);
+				let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+				assert_eq!(v["choices"][0]["message"]["content"], "hi there");
+			},
+			ExecuteOutcome::Coalesced(shared) => {
+				// Coalescing is on by default; a lone leader still returns via
+				// Coalesced with the same body bytes.
+				assert_eq!(shared.status, 200);
+				let v: serde_json::Value = serde_json::from_slice(&shared.body).unwrap();
+				assert_eq!(v["choices"][0]["message"]["content"], "hi there");
+			},
+			ExecuteOutcome::Response(_) => panic!("expected Buffered/Coalesced, got Response"),
+		}
+	}
 }
