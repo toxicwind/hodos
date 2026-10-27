@@ -46,6 +46,15 @@ struct Ctx {
 const MODEL_LABEL_CAP: usize = 256;
 const DEADLINE_HEADER: &str = "x-rhodochrosite-deadline-ms";
 
+/// User-Agent used upstream when the caller sends none. Cloudflare-fronted
+/// providers (freeinference, groq) answer 403 "error code: 1010" to a
+/// library-default UA, which surfaces here as a 502. A plain desktop
+/// browser UA is what these upstreams expect from an OpenAI-compatible
+/// client.
+const DEFAULT_UPSTREAM_UA: &str =
+	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) \
+	 Chrome/131.0.0.0 Safari/537.36";
+
 #[derive(Clone, Copy)]
 struct RequestDeadline(Instant);
 
@@ -493,10 +502,21 @@ fn upstream_request(
 	let mut req = http
 		.request(method.clone(), url)
 		.header(header::AUTHORIZATION, format!("Bearer {key}"));
-	for name in [header::CONTENT_TYPE, header::ACCEPT] {
+	// 2026-10-27: forward the User-Agent too. Several upstreams sit behind
+	// Cloudflare, which rejects a bare client UA with "error code: 1010"
+	// (browser-signature banned) and answers 403 — which the router then
+	// reported as a bare 502 on every chat/completions. Forwarding the
+	// caller's UA (and defaulting to a normal desktop UA when the caller
+	// sends none) keeps the request looking like what it is.
+	let mut ua_forwarded = false;
+	for name in [header::CONTENT_TYPE, header::ACCEPT, header::USER_AGENT] {
 		if let Some(v) = headers.get(&name) {
-			req = req.header(name, v);
+			req = req.header(name.clone(), v);
+			ua_forwarded = name == header::USER_AGENT;
 		}
+	}
+	if !ua_forwarded {
+		req = req.header(header::USER_AGENT, DEFAULT_UPSTREAM_UA);
 	}
 	if !body.is_empty() {
 		req = req.body(body.clone());
