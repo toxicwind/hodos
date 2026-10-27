@@ -195,6 +195,11 @@ struct RouterInner {
 	/// 2xx chat completion arrives with no content and no tool calls.
 	/// Entries decay after EMPTY_STRIKE_DECAY; surfaced on /metrics.
 	empty_strikes:      Mutex<HashMap<(String, String), (u32, Instant)>>,
+	/// Per-(provider, model) auth/credit strikes: 401/402/403 from the
+	/// upstream for THIS model. Decays like empty_strikes. A model the
+	/// provider refuses on credits/key stops being selected until decay,
+	/// instead of burning a failover hop on every request.
+	model_strikes:      Mutex<HashMap<(String, String), (u32, Instant)>>,
 }
 
 /// The router: cloneable handle to the multi-provider subsystem.
@@ -329,6 +334,11 @@ impl RouterHandle {
 	/// (TTL, single-flight refresh) live on each runtime's `models_cache`.
 	/// Empty-completion strikes decay after this long without a new strike.
 	pub const EMPTY_STRIKE_DECAY: Duration = Duration::from_secs(600);
+	/// Credit/auth strikes decay after 15 minutes (a top-up or a key fix
+	/// lands, and the model comes back without a restart).
+	pub const MODEL_STRIKE_DECAY: Duration = Duration::from_secs(900);
+	/// Three strikes and the (provider, model) pair stops being selected.
+	pub const MODEL_STRIKE_LIMIT: u32 = 3;
 	/// How long a probe-refreshed models cache counts as "fresh" for
 	/// advertisement. The probe loop refreshes every `probe_interval`
 	/// (default 30 s); 5 minutes tolerates several missed probes before
@@ -396,6 +406,7 @@ impl RouterHandle {
 			data_dir: data_dir.to_path_buf(),
 			writer: Mutex::new(Some(writer)),
 			empty_strikes: Mutex::new(HashMap::new()),
+			model_strikes: Mutex::new(HashMap::new()),
 		});
 		let handle = Self { inner };
 		handle.spawn_probe_loop();
@@ -578,6 +589,19 @@ impl RouterHandle {
 		let auto_directive = model == "auto";
 		if !free_directive && !auto_directive {
 			rts.retain(|rt| rt.def.read().unwrap().serves_model(model));
+		}
+		// 2026-10-27: drop (provider, model) pairs the upstream has refused
+		// with 401/402/403 MODEL_STRIKE_LIMIT times (decay applies). Without
+		// this an exhausted key (openrouter "Insufficient credits") kept its
+		// weight share of every selection and each hit was a guaranteed
+		// failover hop. For the free/auto directives the resolved upstream
+		// model differs per provider, so the gate runs on the resolved pair
+		// below instead.
+		if !free_directive && !auto_directive {
+			rts.retain(|rt| {
+				let served = rt.def.read().unwrap().rewrite_model(model);
+				self.model_selectable(&rt.name(), &served)
+			});
 		}
 		if rts.is_empty() {
 			return vec![];
@@ -795,6 +819,18 @@ impl RouterHandle {
 			return false;
 		}
 		!rt.circuit.lock().unwrap().is_open_and_cooling()
+	}
+
+	/// Candidate gate INCLUDING the per-model credit/auth quarantine: a
+	/// (provider, model) pair the upstream refused with 401/402/403 stops
+	/// being selected until the strikes decay, so an exhausted key stops
+	/// burning a failover hop on every request.
+	fn candidate_ok_for_model(&self, rt: &ProviderRuntime, model: &str) -> bool {
+		if !self.candidate_ok(rt) {
+			return false;
+		}
+		let served = rt.def.read().unwrap().rewrite_model(model);
+		self.model_selectable(&rt.name(), &served)
 	}
 
 	/// Hybrid order: healthy providers first by ascending latency (measured
@@ -1134,7 +1170,17 @@ impl RouterHandle {
 		let Some(rt) = self.runtime(provider) else {
 			return;
 		};
+		// 2026-10-27: 402 (payment required) and 401/403 (key invalid) are
+		// PER-MODEL failures, not provider failures -- one exhausted key
+		// (openrouter's credits) or one unlisted model must NOT drain the
+		// whole provider out of rotation. record_model_strikes() below
+		// quarantines the (provider, model) pair instead, using the same
+		// decay pattern as empty_strikes. Only transport-class failures
+		// (conn/429/5xx) are provider-level.
 		let failed = status == 0 || status == 429 || status >= 500;
+		if status == 401 || status == 402 || status == 403 {
+			self.record_model_strikes(provider, model, status);
+		}
 		if failed {
 			rt.circuit.lock().unwrap().record_failure(now_unix);
 			self.inner.health.record_health(provider, false, now_unix);
@@ -1159,6 +1205,40 @@ impl RouterHandle {
             "provider" => provider.to_string(),
             "status" => status.to_string())
 		.increment(1);
+	}
+
+	/// Record an auth/credit strike (401/402/403) against a provider/model
+	/// pair. The pair stops being selected after MODEL_STRIKE_LIMIT strikes
+	/// until the strikes decay (MODEL_STRIKE_DECAY), so a key without
+	/// credits stops burning a failover hop on every request. Surfaced as
+	/// the rhodochrosite_model_credit_strikes gauge.
+	pub fn record_model_strikes(&self, provider: &str, model: &str, status: u16) {
+		let mut strikes = self.inner.model_strikes.lock().unwrap();
+		let entry = strikes
+			.entry((provider.to_owned(), model.to_owned()))
+			.or_insert((0u32, Instant::now()));
+		entry.0 = entry.0.saturating_add(1);
+		entry.1 = Instant::now();
+		gauge!(
+			 "rhodochrosite_model_credit_strikes",
+			 "provider" => provider.to_string(),
+			 "model" => model.to_string(),
+			 "status" => status.to_string(),
+		)
+		.set(entry.0 as f64);
+	}
+
+	pub fn model_strike_count(&self, provider: &str, model: &str) -> u32 {
+		let strikes = self.inner.model_strikes.lock().unwrap();
+		match strikes.get(&(provider.to_owned(), model.to_owned())) {
+			Some((n, at)) if at.elapsed() < Self::MODEL_STRIKE_DECAY => *n,
+			_ => 0,
+		}
+	}
+
+	/// Whether this (provider, model) is select-able: under the strike limit.
+	pub fn model_selectable(&self, provider: &str, model: &str) -> bool {
+		self.model_strike_count(provider, model) < Self::MODEL_STRIKE_LIMIT
 	}
 
 	/// Record an empty completion (2xx, no content, no tool calls) against a
