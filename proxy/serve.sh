@@ -15,7 +15,17 @@ set -euo pipefail
 # 2026-10-26: source the keyring env dump directly.
 _kr_env="$(mktemp)"
 secretsmith env 2>/dev/null | grep -aE '^[A-Za-z_][A-Za-z0-9_]*=' > "$_kr_env"
-[[ -s "$_kr_env" ]] && . "$_kr_env"
+# 2026-10-27: `set -a` is REQUIRED here. A plain `. "$_kr_env"` defines
+# SHELL variables, not exported ones — so every provider key (GROQ_API_KEY,
+# NIM_API_KEY, OPENROUTER_API_KEY, ...) was dropped at the `exec` below and
+# the router saw zero providers ("NotConnected" on every alias, 502 on every
+# chat/completions). With `set -a` the sourced assignments are exported and
+# survive the exec.
+if [[ -s "$_kr_env" ]]; then
+  set -a
+  . "$_kr_env"
+  set +a
+fi
 rm -f "$_kr_env"
 export DATA_DIR="${DATA_DIR:-${RHODOCHROSITE_DATA_DIR:-$HOME/.hodos-data}}"
 export HOST="${HOST:-${RHODOCHROSITE_HOST:-127.0.0.1}}"
