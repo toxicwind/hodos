@@ -270,6 +270,11 @@ pub struct ProviderDef {
     pub no_auth: bool,
     #[serde(default)]
     pub free_tier: bool,
+    /// Global concurrency cap for this provider (0 = ungoverned).
+    /// freeinference advertises 2 concurrent upstream slots; setting this
+    /// queues locally (FIFO shed) instead of discovering the cap via 429s.
+    #[serde(default)]
+    pub max_parallel: usize,
     #[serde(default)]
     pub models: Vec<String>,
     /// Upstream model id -> id to actually request. AstMatrix's `ModelMap`.
@@ -314,6 +319,7 @@ impl Default for ProviderDef {
             keys: Vec::new(),
             no_auth: false,
             free_tier: false,
+            max_parallel: 0,
             models: Vec::new(),
             model_map: HashMap::new(),
             weight: 1.0,

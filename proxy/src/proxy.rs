@@ -986,6 +986,22 @@ fn streaming(
 				};
 
 				let sent_at = Instant::now();
+				// Per-provider concurrency gate (pgate): providers with a hard
+				// global slot limit (freeinference = 2) queue/shed LOCALLY
+				// instead of discovering the cap via 429 storms. Shed = 503
+				// provider_busy SSE; the client retries with its own backoff.
+				let _ppg = match state.router.provider_gate_admit("nvidia") {
+					Some(p) => p,
+					None => {
+						record_request(&ctx, "503");
+						let _ = tx
+							.send(Ok(sse_error(
+								"provider_busy: concurrency cap reached, shed locally (no upstream 429)",
+							)))
+							.await;
+						return;
+					},
+				};
 				let resp = match upstream_request(
 					&state.http,
 					&cfg.base_url,

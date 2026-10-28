@@ -15,6 +15,7 @@ mod observation;
 mod mimetite_providers;
 mod roost_providers;
 pub mod model_ref;
+mod pgate;
 mod pool;
 mod presentation;
 mod providers;

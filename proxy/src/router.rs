@@ -61,6 +61,7 @@ pub struct ProviderRuntime {
 	pub dispatcher:   Dispatcher,
 	/// Model-pressure governor (worker-concurrency, not RPM).
 	pub governor:     Arc<Governor>,
+	/// Per-provider concurrency gate (max_parallel; freeinference 2-slot law).
 	/// Circuit breaker (5 failures / 30 s / 3 half-open successes).
 	pub circuit:      Mutex<CircuitBreaker>,
 	/// Buffered-request coalescer (5 s TTL).
@@ -182,6 +183,8 @@ struct RouterInner {
 	routing:            RwLock<RoutingCfg>,
 	governor_overrides: RwLock<std::collections::BTreeMap<String, usize>>,
 	governor_enabled:   AtomicBool,
+	/// Per-provider concurrency gates (max_parallel on ProviderDef; 0 = ungoverned).
+	pgate:              Arc<crate::pgate::ProviderGate>,
 	client:             reqwest::Client,
 	data_dir:           PathBuf,
 	/// Owns the SQLite writer thread. `None` in unit tests (persistence
@@ -410,6 +413,9 @@ impl RouterHandle {
 				.timeout(Duration::from_secs(15))
 				.build()
 				.map_err(|e| format!("cannot build HTTP client: {e}"))?,
+			pgate: Arc::new(crate::pgate::ProviderGate::build(
+				&stored.providers.iter().map(|d| (d.name.as_str(), d.max_parallel)).collect::<Vec<_>>(),
+			)),
 			data_dir: data_dir.to_path_buf(),
 			writer: Mutex::new(Some(writer)),
 			empty_strikes: Mutex::new(HashMap::new()),
@@ -1251,6 +1257,15 @@ impl RouterHandle {
 	}
 
 	/// Whether this (provider, model) is select-able: under the strike limit.
+	/// Admit one upstream connection slot for `provider` (pgate). Returns a
+	/// Drop permit; None = at cap → caller sheds 503 locally.
+	pub fn provider_gate_admit(
+		&self,
+		provider: &str,
+	) -> Option<crate::pgate::ProviderPermit> {
+		self.inner.pgate.try_admit(provider)
+	}
+
 	pub fn model_selectable(&self, provider: &str, model: &str) -> bool {
 		self.model_strike_count(provider, model) < Self::MODEL_STRIKE_LIMIT
 	}
@@ -2294,6 +2309,9 @@ mod tests {
 			governor_overrides: RwLock::new(Default::default()),
 			governor_enabled: AtomicBool::new(true),
 			client: reqwest::Client::new(),
+			pgate: Arc::new(crate::pgate::ProviderGate::build(
+				&defs.iter().map(|d| (d.name.as_str(), d.max_parallel)).collect::<Vec<_>>(),
+			)),
 			data_dir: PathBuf::from("/tmp/rhodochrosite-router-test"),
 			writer: Mutex::new(None),
 			empty_strikes: Mutex::new(HashMap::new()),
