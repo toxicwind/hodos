@@ -98,7 +98,30 @@ impl ProviderGate {
 	pub fn limit(&self, provider: &str) -> usize {
 		self.gates.lock().unwrap().get(provider).map_or(0, |s| s.limit)
 	}
+
+	/// Per-provider snapshot for /api/gate (ops visibility).
+	pub fn snapshot(&self) -> Vec<GateRow> {
+		self.gates
+			.lock()
+			.unwrap()
+			.iter()
+			.map(|(k, v)| GateRow {
+				provider: k.clone(),
+				limit: v.limit,
+				in_flight: v.inflight,
+			})
+			.collect()
+	}
 }
+/// One row of the /api/gate status table.
+#[derive(serde::Serialize)]
+pub struct GateRow {
+	pub provider:  String,
+	pub limit:     usize,
+	pub in_flight: usize,
+}
+
+
 
 #[cfg(test)]
 mod tests {

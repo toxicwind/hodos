@@ -38,6 +38,7 @@ pub const API_SETTINGS_ACCOUNT: &str = "/settings/account";
 pub const API_SETTINGS_LOCALE: &str = "/settings/locale";
 pub const API_SETTINGS_VALIDATE_KEY: &str = "/settings/validate-key";
 pub const API_PROVIDERS: &str = "/providers";
+pub const API_GATE: &str = "/api/gate";
 pub const API_SETTINGS_ROUTING: &str = "/settings/routing";
 
 // Client-facing surface (client-key auth, not session auth). Paths are

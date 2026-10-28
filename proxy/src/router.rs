@@ -1257,6 +1257,11 @@ impl RouterHandle {
 	}
 
 	/// Whether this (provider, model) is select-able: under the strike limit.
+	/// Ops visibility: per-provider gate rows for /api/gate.
+	pub fn pgate_snapshot(&self) -> Vec<crate::pgate::GateRow> {
+		self.inner.pgate.snapshot()
+	}
+
 	/// Admit one upstream connection slot for `provider` (pgate). Returns a
 	/// Drop permit; None = at cap → caller sheds 503 locally.
 	pub fn provider_gate_admit(

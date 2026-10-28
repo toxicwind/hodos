@@ -731,6 +731,7 @@ pub async fn run() {
 		.route(routes::API_SETTINGS_USERS, post(settings::users))
 		.route(routes::API_SETTINGS_ACCOUNT, post(settings::account))
 		.route(routes::API_SETTINGS_LOCALE, post(settings::locale))
+		.route(routes::API_GATE, get(api_gate))
 		.route(routes::API_PROVIDERS, get(settings::providers))
 		.route(routes::API_SETTINGS_ROUTING, post(settings::routing))
 		.route(routes::API_SETTINGS_VALIDATE_KEY, post(settings::validate_key))
@@ -879,4 +880,16 @@ mod tests {
 		// Sanity: it is seconds-since-epoch in 2026 (a 10-digit value).
 		assert!(a > 1_700_000_000, "unix_now should be epoch seconds in 2026, got {a}");
 	}
+}
+
+
+async fn api_gate(State(state): State<Arc<AppState>>) -> Response {
+	let rows = state.router.pgate_snapshot();
+	Response::builder()
+		.status(StatusCode::OK)
+		.header("content-type", "application/json")
+		.body(axum::body::Body::from(
+			serde_json::to_string(&rows).unwrap_or_else(|_| "[]".into()),
+		))
+		.unwrap()
 }
