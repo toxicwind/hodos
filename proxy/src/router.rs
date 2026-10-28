@@ -1190,15 +1190,25 @@ impl RouterHandle {
 		// quarantines the (provider, model) pair instead, using the same
 		// decay pattern as empty_strikes. Only transport-class failures
 		// (conn/429/5xx) are provider-level.
-		let failed = status == 0 || status == 429 || status >= 500;
-		if status == 401 || status == 402 || status == 403 {
+		// Shed-not-strike rule (Task 8.0.1, AGENTS.md): 429 is a limiter shed,
+		// never a provider failure or circuit strike. Only 0 (connection lost)
+		// and 5xx are genuine provider-level failures.
+		let is_shed = status == 429;
+		let failed = status == 0 || status >= 500;
+		if is_shed {
+			counter!("rhodochrosite_limiter_shed_total", "provider" => provider.to_string()).increment(1);
+		}
+		// Vanished model classes (402, 404, 410: 12-hour quarantine) and
+		// key-exhaustion classes (401, 403: 15-minute decay) are quarantined
+		// per (provider, model) pair rather than failing the whole provider.
+		if status == 401 || status == 402 || status == 403 || status == 404 || status == 410 {
 			self.record_model_strikes(provider, model, status);
 		}
 		if failed {
 			rt.circuit.lock().unwrap().record_failure(now_unix);
 			self.inner.health.record_health(provider, false, now_unix);
 			rt.metrics.errors.fetch_add(1, Ordering::Relaxed);
-		} else {
+		} else if !is_shed {
 			rt.circuit.lock().unwrap().record_success();
 			self.inner.health.record_health(provider, true, now_unix);
 		}
