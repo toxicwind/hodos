@@ -2297,6 +2297,7 @@ mod tests {
 			data_dir: PathBuf::from("/tmp/rhodochrosite-router-test"),
 			writer: Mutex::new(None),
 			empty_strikes: Mutex::new(HashMap::new()),
+			model_strikes: Mutex::new(HashMap::new()),
 		});
 		RouterHandle { inner }
 	}
