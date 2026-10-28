@@ -199,7 +199,7 @@ struct RouterInner {
 	/// upstream for THIS model. Decays like empty_strikes. A model the
 	/// provider refuses on credits/key stops being selected until decay,
 	/// instead of burning a failover hop on every request.
-	model_strikes:      Mutex<HashMap<(String, String), (u32, Instant)>>,
+	model_strikes:      Mutex<HashMap<(String, String), (u32, Instant, Duration)>>,
 }
 
 /// The router: cloneable handle to the multi-provider subsystem.
@@ -337,6 +337,13 @@ impl RouterHandle {
 	/// Credit/auth strikes decay after 15 minutes (a top-up or a key fix
 	/// lands, and the model comes back without a restart).
 	pub const MODEL_STRIKE_DECAY: Duration = Duration::from_secs(900);
+	/// VANISHED-class strikes (402 credits-dead, 404/410 model-gone) decay
+	/// after 12 HOURS. A model that "was there and then gone" (e.g.
+	/// freeinference/minimax-m3.1-flash) must not burn a failover hop every
+	/// 15 minutes for half a day — that is the exact 2026-10-28 minimax
+	/// there-then-gone pain the architect ordered classed. (429 never
+	/// strikes: it is a limiter shed honoring Retry-After, red-herring law.)
+	pub const MODEL_VANISHED_DECAY: Duration = Duration::from_secs(43_200);
 	/// Three strikes and the (provider, model) pair stops being selected.
 	pub const MODEL_STRIKE_LIMIT: u32 = 3;
 	/// How long a probe-refreshed models cache counts as "fresh" for
@@ -1213,12 +1220,19 @@ impl RouterHandle {
 	/// credits stops burning a failover hop on every request. Surfaced as
 	/// the rhodochrosite_model_credit_strikes gauge.
 	pub fn record_model_strikes(&self, provider: &str, model: &str, status: u16) {
+		// Decay class: 402/404/410 = VANISHED (12 h); everything else that
+		// strikes (401/403 key-class) keeps the 15 min key-fix decay.
+		let decay = match status {
+			402 | 404 | 410 => Self::MODEL_VANISHED_DECAY,
+			_ => Self::MODEL_STRIKE_DECAY,
+		};
 		let mut strikes = self.inner.model_strikes.lock().unwrap();
 		let entry = strikes
 			.entry((provider.to_owned(), model.to_owned()))
-			.or_insert((0u32, Instant::now()));
+			.or_insert((0u32, Instant::now(), decay));
 		entry.0 = entry.0.saturating_add(1);
 		entry.1 = Instant::now();
+		entry.2 = decay;
 		gauge!(
 			 "rhodochrosite_model_credit_strikes",
 			 "provider" => provider.to_string(),
@@ -1231,7 +1245,7 @@ impl RouterHandle {
 	pub fn model_strike_count(&self, provider: &str, model: &str) -> u32 {
 		let strikes = self.inner.model_strikes.lock().unwrap();
 		match strikes.get(&(provider.to_owned(), model.to_owned())) {
-			Some((n, at)) if at.elapsed() < Self::MODEL_STRIKE_DECAY => *n,
+			Some((n, at, decay)) if at.elapsed() < *decay => *n,
 			_ => 0,
 		}
 	}
