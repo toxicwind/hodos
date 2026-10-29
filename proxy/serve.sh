@@ -14,11 +14,26 @@ set -euo pipefail
 # secretsmith KEYRING (SSOT 2026-10-18); ~/.secrets is DELETED (2026-10-26).
 # 2026-10-26: source the keyring env dump directly.
 _kr_env="$(mktemp)"
-secretsmith env 2>/dev/null | grep -aE '^[A-Za-z_][A-Za-z0-9_]*=' > "$_kr_env"
+# secretsmith --show --json env emits machine-parsable exports; sourcing raw
+# shell from the keyring is UNSAFE: values like MOONBOX_DRIVE9_TOKEN contain
+# inner single quotes that unbalance bash's parser and take down every
+# key_env provider (freeinference, groq, openrouter, mistral, cerebras,
+# github) on restart. A small python step escapes values for single-quoted
+# shell assignment so arbitrary secret values survive the source.
+python3 - "$_kr_env" << 'PY'
+import json, subprocess, sys
+path = sys.argv[1]
+env = json.loads(subprocess.check_output(
+    ["secretsmith", "--show", "--json", "env"], text=True))["exports"]
+with open(path, "w") as f:
+    for k, v in sorted(env.items()):
+        safe = v.replace("'", "'\\''")
+        f.write(f"{k}='{safe}'\n")
+PY
 # 2026-10-27: `set -a` is REQUIRED here. A plain `. "$_kr_env"` defines
 # SHELL variables, not exported ones — so every provider key (GROQ_API_KEY,
-# NIM_API_KEY, OPENROUTER_API_KEY, ...) was dropped at the `exec` below and
-# the router saw zero providers ("NotConnected" on every alias, 502 on every
+# NIM_API_KEY, OPENROUTER_API_KEY, ...) was dropped at the `exec` below
+# and the router saw zero providers ("NotConnected" on every alias, 502 on every
 # chat/completions). With `set -a` the sourced assignments are exported and
 # survive the exec.
 if [[ -s "$_kr_env" ]]; then
