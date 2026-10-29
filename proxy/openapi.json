@@ -1845,6 +1845,9 @@
             "format": "int64",
             "minimum": 0
           },
+          "promote_reasoning_content": {
+            "type": "boolean"
+          },
           "request_timeout_secs": {
             "type": "integer",
             "format": "int64",

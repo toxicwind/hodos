@@ -518,6 +518,17 @@ fn upstream_request(
 	if !ua_forwarded {
 		req = req.header(header::USER_AGENT, DEFAULT_UPSTREAM_UA);
 	}
+	// 2026-10-28: forward the verified gateway session/trace headers.
+	// freeinference honors X-Session-ID (SGLang sticky routing for KV-cache
+	// prefix reuse) and X-Request-ID (trace echo); both were silently dropped
+	// here before, so sticky routing could never survive the proxy hop.
+	// x-request-id is forwarded for every upstream (harmless trace passthrough);
+	// x-session-id additionally backs the Dots session coercion above.
+	for name in ["x-session-id", "x-request-id", "anthropic-version"] {
+		if let Some(v) = headers.get(name) {
+			req = req.header(name, v);
+		}
+	}
 	if !body.is_empty() {
 		req = req.body(body.clone());
 	}
