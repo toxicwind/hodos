@@ -524,7 +524,14 @@ fn upstream_request(
 	// here before, so sticky routing could never survive the proxy hop.
 	// x-request-id is forwarded for every upstream (harmless trace passthrough);
 	// x-session-id additionally backs the Dots session coercion above.
-	for name in ["x-session-id", "x-request-id", "anthropic-version"] {
+	for name in [
+		"x-session-id",
+		"x-request-id",
+		"anthropic-version",
+		// freeinference: "false" strips reasoning_content from the upstream
+		// response (fewer completion tokens billed). Verified 2026-10-28.
+		"x-reasoning-passthrough",
+	] {
 		if let Some(v) = headers.get(name) {
 			req = req.header(name, v);
 		}
@@ -816,11 +823,26 @@ async fn buffered(
 		// `x-previous-interaction-id` to build `previous_interaction_id` and
 		// answers with `x-interaction-id`; without the relay every tool loop
 		// through rhodochrosite dies with a 400 on the second turn.
-		passthrough: headers
-			.get("x-previous-interaction-id")
-			.and_then(|v| v.to_str().ok())
-			.map(|v| vec![("x-previous-interaction-id".to_owned(), v.to_owned())])
-			.unwrap_or_default(),
+		// 2026-10-28: relay the verified freeinference gateway headers too —
+		// X-Session-ID (SGLang sticky routing), X-Request-ID (trace echo),
+		// X-Reasoning-Passthrough (false strips reasoning_content upstream),
+		// Anthropic-Version. The router lane previously relayed ONLY the
+		// Interactions handle, so sticky routing never survived this hop.
+		passthrough: {
+			let mut pt: Vec<(String, String)> = Vec::new();
+			for name in [
+				"x-previous-interaction-id",
+				"x-session-id",
+				"x-request-id",
+				"x-reasoning-passthrough",
+				"anthropic-version",
+			] {
+				if let Some(v) = headers.get(name).and_then(|v| v.to_str().ok()) {
+					pt.push((name.to_owned(), v.to_owned()));
+				}
+			}
+			pt
+		},
 		model: raw_model.to_owned(),
 		session: Some(session),
 		deadline,
