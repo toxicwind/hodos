@@ -25,7 +25,7 @@ const REF = join(here, "..", "reference");
 // ---- sources (configurable for tests) -------------------------------------
 const MIMETITE_PROVIDERS =
   process.env.MIMETITE_PROVIDERS_JSON ??
-  "/home/toxic/estate/ranch/mimetite/generated/providers.json";
+  "/home/toxic/pens/estate/ranch/mimetite/generated/providers.json";
 const NIM_RATE_LIMITS =
   process.env.NIM_RATE_LIMITS_YML ??
   join(REF, "nvidia-nim", "rate-limits", "nvidia-nim-rate-limits.yml");

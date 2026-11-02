@@ -373,11 +373,38 @@ impl ProviderDef {
 
     /// Rewrite the requested model id through this provider's model map.
     /// Returns the id to actually send upstream.
+    /// Split a requested model id into its base id and trailing tier/flavor
+    /// qualifiers (`estate/auto:high` -> `("estate/auto", Some("high"))`).
+    /// Mirrors `model_ref::split_qualifiers`: everything from the first `:`
+    /// after the last `/` is a qualifier run, not part of the id.
+    fn split_model_qualifiers(model: &str) -> (&str, Option<&str>) {
+        let ls = match model.rfind('/') {
+            Some(ls) => ls + 1,
+            None => 0,
+        };
+        match model[ls..].find(':') {
+            Some(i) => (&model[..ls + i], Some(&model[ls + i + 1..])),
+            None => (model, None),
+        }
+    }
+
+
+    /// Public tier-strip for the router's lane normalization: the base id of
+    /// `model` with any trailing `:qualifier` run removed.
+    pub fn strip_model_tier(model: &str) -> String {
+        let (base, _) = ProviderDef::split_model_qualifiers(model);
+        base.to_string()
+    }
+
     pub fn map_model<'a>(&'a self, model: &'a str) -> &'a str {
-        self.model_map
-            .get(model)
-            .map(|s| s.as_str())
-            .unwrap_or(model)
+        // Tier-qualified ids (`estate/auto:high`) map on their base id so a
+        // thinking-tier suffix never dead-ends the lane lookup; the upstream
+        // request keeps the tier via the client's reasoning_effort field.
+        let (base, _tier) = Self::split_model_qualifiers(model);
+        if let Some(mapped) = self.model_map.get(model).or_else(|| self.model_map.get(base)) {
+            return mapped.as_str();
+        }
+        base
     }
 
     /// Owned version of [`Self::map_model`] for the router's candidates.
@@ -389,7 +416,15 @@ impl ProviderDef {
     /// models list carries the `"*"` wildcard (the old NVIDIA proxy passed
     /// any requested model through, and migrated providers keep that).
     pub fn serves_model(&self, model: &str) -> bool {
-        self.models.iter().any(|m| m == "*" || m == model)
+        if self.models.iter().any(|m| m == "*" || m == model) {
+            return true;
+        }
+        // A tier qualifier (`:high`) rides the request as a thinking-effort
+        // directive; it must not make the provider look like it never heard
+        // of the lane. Match the base id so `estate/auto:high` finds every
+        // provider that serves `estate/auto`.
+        let (base, tier) = Self::split_model_qualifiers(model);
+        tier.is_some() && self.models.iter().any(|m| m == "*" || m == base)
     }
 
     /// The upstream id for `model` differs from the requested one.
@@ -714,7 +749,7 @@ pub fn default_providers() -> Vec<ProviderDef> {
 ///   (additive; an operator's own entries survive).
 pub fn apply_catalog_wire_truth(defs: &mut [ProviderDef]) {
     for def in defs.iter_mut() {
-        let Some(cat) = crate::mimetite_providers::MIMETITE_PROVIDERS
+        let Some(cat) = crate::mimetite_providers::PINAX_PROVIDERS
             .iter()
             .find(|p| p.name == def.name)
         else {
@@ -747,6 +782,64 @@ pub type SharedSet = Arc<ProviderSet>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn split_model_qualifiers_parses_tier_suffix() {
+        assert_eq!(ProviderDef::split_model_qualifiers("estate/auto:high"), ("estate/auto", Some("high")));
+        assert_eq!(ProviderDef::split_model_qualifiers("estate/auto"), ("estate/auto", None));
+        // A `:` inside a namespaced provider path is NOT a qualifier boundary
+        // unless it follows the last path segment.
+        assert_eq!(
+            ProviderDef::split_model_qualifiers("nvidia/nemotron-3.5-bolt-e4b"),
+            ("nvidia/nemotron-3.5-bolt-e4b", None)
+        );
+        assert_eq!(
+            ProviderDef::split_model_qualifiers("openrouter/deepseek/deepseek-chat:free"),
+            ("openrouter/deepseek/deepseek-chat", Some("free"))
+        );
+        assert_eq!(ProviderDef::split_model_qualifiers("glm-5.3-flash"), ("glm-5.3-flash", None));
+    }
+
+    #[test]
+    fn serves_model_matches_tier_qualified_estate_lanes() {
+        let def = ProviderDef {
+            name: "freeinference".into(),
+            models: vec![
+                "estate/auto".into(),
+                "estate/fast".into(),
+                "glm-5.3-flash".into(),
+            ],
+            model_map: std::collections::HashMap::from([
+                ("estate/auto".to_string(), "qwen3.6-35b".to_string()),
+                ("estate/fast".to_string(), "glm-5.3-flash".to_string()),
+            ]),
+            ..ProviderDef::default()
+        };
+        assert!(def.serves_model("estate/auto"));
+        assert!(
+            def.serves_model("estate/auto:high"),
+            "thinking-tier suffix must not dead-end the lane"
+        );
+        assert!(def.serves_model("estate/fast:low"));
+        assert!(def.serves_model("glm-5.3-flash"));
+        assert!(!def.serves_model("estate/reasoning"));
+    }
+
+    #[test]
+    fn map_model_resolves_tier_qualified_lane_to_upstream_id() {
+        let def = ProviderDef {
+            name: "freeinference".into(),
+            models: vec!["estate/auto".into()],
+            model_map: std::collections::HashMap::from([(
+                "estate/auto".to_string(),
+                "qwen3.6-35b".to_string(),
+            )]),
+            ..ProviderDef::default()
+        };
+        assert_eq!(def.rewrite_model("estate/auto:high"), "qwen3.6-35b");
+        assert_eq!(def.rewrite_model("estate/auto"), "qwen3.6-35b");
+        assert_eq!(def.rewrite_model("plain-id"), "plain-id");
+    }
 
     #[test]
     fn apply_catalog_wire_truth_refreshes_windows_and_adds_catalog_models() {

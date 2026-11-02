@@ -50,7 +50,7 @@ The auth token is an OpenAI-style **agent key**, not an Anthropic key:
 
 ## rhodochrosite: the "Anthropic proxy" that is really the router
 
-Source: `/home/toxic/estate/ranch/rhodochrosite/proxy`.
+Source: `/home/toxic/pens/estate/ranch/rhodochrosite/proxy`.
 
 - **Serves both wire formats** (`README.md` + `anthropic.rs`):
   - Anthropic `/v1/messages` (Claude Code works out of the box)

@@ -332,7 +332,7 @@ pub fn is_declared_serve(model: &str) -> bool {
     if let Some(lane) = model.strip_prefix("estate/") {
         return ESTATE_LANES.contains(&lane);
     }
-    crate::mimetite_providers::MIMETITE_PROVIDERS
+    crate::mimetite_providers::PINAX_PROVIDERS
         .iter()
         .any(|p| p.seeds.contains(&model) || p.static_models.contains(&model))
 }

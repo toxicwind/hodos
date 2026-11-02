@@ -748,6 +748,41 @@ impl RouterHandle {
 
 	/// Select with a full routing decision record (AstrLink pattern).
 	/// Returns candidates plus a RoutingDecision explaining the choice.
+	/// Streaming-path candidate selection: the same `select_with_decision`
+	/// walk `execute_buffered` uses, returned so the proxy's SSE relay loop
+	/// can acquire candidates one attempt at a time. The streaming path
+	/// previously hardcoded the NVIDIA upstream and forwarded the body model
+	/// verbatim, which 404'd every estate lane id at NVIDIA's Go mux.
+	pub fn candidates_for(
+		&self,
+		model: &str,
+		session: Option<&str>,
+	) -> Vec<RouteCandidate> {
+		let (candidates, _decision) =
+			self.select_with_decision(model, session.unwrap_or(""), None, 0);
+		candidates
+	}
+
+	/// Acquire one streaming attempt: identical gates to the buffered path's
+	/// per-attempt acquire (circuit, limiter, governor, FIFO slot, pgate),
+	/// minus the request deadline ownership the buffered loop carries.
+	pub async fn acquire_streaming(
+		&self,
+		candidates: &[RouteCandidate],
+		ctx: &AcquireCtx,
+	) -> Result<Acquired, RouteError> {
+		for candidate in candidates {
+			match self.acquire(candidate, ctx).await {
+				Ok(a) => return Ok(a),
+				Err(RouteError::RateLimited(_) | RouteError::Unavailable(_)) => continue,
+				Err(e) => return Err(e),
+			}
+		}
+		Err(RouteError::Unavailable(
+			"no routing candidate could grant a slot".to_owned(),
+		))
+	}
+
 	pub fn select_with_decision(
 		&self,
 		model: &str,
@@ -1783,6 +1818,19 @@ impl RouterHandle {
 			client_gone,
 		} = ctx;
 		let routing = self.routing_config();
+		// Tier-qualified estate lanes (`estate/auto:high`) carry a thinking
+		// effort, not a different lane: strip the qualifier so the lane gate
+		// and the candidate selection see the declared id. tau appends
+		// `:high`/`:low` to the model selector for reasoning effort.
+		let model = {
+			let stripped = crate::providers::ProviderDef::strip_model_tier(&model);
+			if stripped == model {
+				model
+			} else {
+				tracing::info!(requested = %model, lane = %stripped, "tier-qualified estate lane normalized");
+				stripped
+			}
+		};
 		// Context-window auto-demotion budget: estimated prompt tokens +
 		// requested max_tokens. Models that provably cannot hold the request
 		// are demoted (not dropped) in the candidate chain.

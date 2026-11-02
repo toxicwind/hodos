@@ -218,6 +218,44 @@ fn backoff_for_429(consecutive: u32) -> Duration {
 	Duration::from_secs(capped.saturating_sub(quarter).saturating_add(jitter).max(5))
 }
 
+/// Rebuild an [`Acquired`] carrying the slot it granted, for
+/// `finish_success`/`finish_failure` after the streaming loop destructured
+/// the acquisition into its parts.
+fn acq_with_slot(acq: &crate::router::Acquired, slot: crate::dispatch::Slot) -> crate::router::Acquired {
+	let mut out = crate::router::Acquired {
+		provider: acq.provider.clone(),
+		model: acq.model.clone(),
+		base_url: acq.base_url.clone(),
+		no_auth: acq.no_auth,
+		strategy: acq.strategy,
+		slot,
+		permit: None,
+		attempt_started: acq.attempt_started,
+		session: acq.session.clone(),
+		passthrough: acq.passthrough.clone(),
+	};
+	out
+}
+
+/// Streaming twin of the router's `rewrite_body_model`: point the body's
+/// `model` field at the acquired candidate's upstream id before the relay.
+fn rewrite_body_model_owned(body: &Bytes, model: &str) -> Bytes {
+	let mut v: serde_json::Value = match serde_json::from_slice(body) {
+		Ok(v) => v,
+		Err(_) => return body.clone(),
+	};
+	if !v.is_object() {
+		return body.clone();
+	}
+	if v.get("model").and_then(|m| m.as_str()) == Some(model) {
+		return body.clone();
+	}
+	v["model"] = serde_json::Value::String(model.to_owned());
+	serde_json::to_vec(&v)
+		.map(Bytes::from)
+		.unwrap_or_else(|_| body.clone())
+}
+
 /// Join the global FIFO queue for a rate-limit slot, invoking `on_wait` every
 /// heartbeat interval so streaming callers can keep their client alive.
 /// Returns None if the queue rejects us (no slot before the deadline) or
@@ -988,7 +1026,36 @@ fn streaming(
 			let decision = std::sync::RwLock::new(crate::decision::RoutingDecision::new());
 			let _decision_emit =
 				crate::decision::DecisionEmit { decision: &decision, model: &ctx.model };
-			'attempt: loop {
+						// Router identity for the candidate chain (2026-11-02): sticky
+			// affinity keys on the authed client + requested model (the same
+			// session string the buffered path uses). The acquire context
+			// carries the same deadline/heartbeat/passthrough contract the
+			// buffered path builds from ExecuteCtx.
+			let session_key = format!("{}:{}", ctx.client, ctx.model);
+			let acquire_ctx = crate::router::AcquireCtx {
+				deadline,
+				heartbeat: cfg.heartbeat,
+				gated_path: true,
+				prefer_lane: prefer,
+				session: Some(session_key.clone()),
+				passthrough: {
+					let mut pt: Vec<(String, String)> = Vec::new();
+					for name in [
+						"x-previous-interaction-id",
+						"x-session-id",
+						"x-request-id",
+						"x-reasoning-passthrough",
+						"anthropic-version",
+					] {
+						if let Some(v) = headers.get(name).and_then(|v| v.to_str().ok()) {
+							pt.push((name.to_owned(), v.to_owned()));
+						}
+					}
+					pt
+				},
+				client_gone: Box::new(|| false),
+			};
+'attempt: loop {
 				// Model-pressure permit first (worker concurrency), then an RPM
 				// slot — both heartbeating so the harness doesn't hang up. The
 				// permit spans the whole upstream exchange and drops on every
@@ -1005,59 +1072,69 @@ fn streaming(
 						.await;
 					return;
 				};
-				let slot = reserve_slot(&state, cfg.heartbeat, deadline, prefer, || {
-					tx.try_send(Ok(Bytes::from_static(b": heartbeat\n\n")))
-						.is_ok()
-				})
-				.await;
-				let Some(slot) = slot else {
-					record_request(&ctx, "504");
-					let _ = tx
-						.send(Ok(sse_error("proxy timed out waiting for an upstream slot")))
-						.await;
-					return;
-				};
-
-				let sent_at = Instant::now();
-				// Per-provider concurrency gate (pgate): providers with a hard
-				// global slot limit (freeinference = 2) queue/shed LOCALLY
-				// instead of discovering the cap via 429 storms. Shed = 503
-				// provider_busy SSE; the client retries with its own backoff.
-				let _ppg = match state.router.provider_gate_admit("nvidia") {
-					Some(p) => p,
-					None => {
+				// Router candidate chain (2026-11-02): the streaming path used
+				// to hardcode the NVIDIA upstream (`cfg.base_url`) and forward
+				// the body's model verbatim, so every estate lane id
+				// (`estate/auto`, `estate/auto:high`) 404'd at NVIDIA's Go mux
+				// while fresh buffered curls routed fine. The stream now walks
+				// the same candidates the buffered path does: per attempt the
+				// router acquires a provider (circuit + limiter + governor +
+				// FIFO slot + pgate), the body model rewrites to the
+				// provider's upstream id, and the request targets the
+				// candidate's own base URL. Lane cooldowns ride the acquired
+				// slot's pool exactly as before.
+				let acq = match state.router.acquire_streaming(
+							&state.router.candidates_for(&ctx.model, Some(&session_key)),
+							&acquire_ctx,
+						).await {
+					Ok(a) => a,
+					Err(crate::router::RouteError::RateLimited(p)) => {
 						record_request(&ctx, "503");
 						let _ = tx
-							.send(Ok(sse_error(
-								"provider_busy: concurrency cap reached, shed locally (no upstream 429)",
-							)))
+							.send(Ok(sse_error(&format!("provider_busy: {p} pool saturated"))))
 							.await;
 						return;
 					},
+					Err(crate::router::RouteError::Unavailable(p)) => {
+						record_request(&ctx, "502");
+						let _ = tx
+							.send(Ok(sse_error(&format!("no upstream available: {p}"))))
+							.await;
+						return;
+					},
+					Err(e) => {
+						record_request(&ctx, "502");
+						let _ = tx.send(Ok(sse_error(&format!("routing failed: {e:?}")))).await;
+						return;
+					},
 				};
+				// The acquired upstream carries its granted slot; `acq` stays whole so
+					// finish_success/finish_failure can consume it by reference.
+				let slot = &acq.slot;
+				let sent_at = acq.attempt_started;
 				let resp = match upstream_request(
 					&state.http,
-					&cfg.base_url,
+					&acq.base_url,
 					&method,
 					&path_query,
 					&headers,
 					&slot.key,
-					&body,
+					&rewrite_body_model_owned(&body, &acq.model),
 				)
 				.send()
 				.await
 				{
 					Ok(r) => r,
 					Err(e) => {
-						tracing::warn!(lane = slot.lane, error = %e, "upstream connection error, retrying");
-						enter_cooldown(&slot, "connect", Duration::from_secs(5));
+						tracing::warn!(provider = %acq.provider, lane = slot.lane, error = %e, "upstream connection error, retrying");
+						enter_cooldown(&acq.slot, "connect", Duration::from_secs(5));
 						state
 							.router
-							.record_attempt("nvidia", &ctx.model, 0, sent_at.elapsed(), false);
+							.record_attempt(&acq.provider, &ctx.model, 0, sent_at.elapsed(), false);
 						decision
 							.write()
 							.unwrap()
-							.push_attempt("nvidia", 0, sent_at.elapsed());
+							.push_attempt(&acq.provider, 0, sent_at.elapsed());
 						continue;
 					},
 				};
@@ -1070,11 +1147,11 @@ fn streaming(
 					body = fallback.take().unwrap();
 					state
 						.router
-						.record_attempt("nvidia", &ctx.model, 400, sent_at.elapsed(), false);
+						.finish_failure(&&acq, 400, false, None);
 					decision
 						.write()
 						.unwrap()
-						.push_attempt("nvidia", 400, sent_at.elapsed());
+						.push_attempt(&acq.provider, 400, sent_at.elapsed());
 					continue;
 				}
 
@@ -1109,19 +1186,18 @@ fn streaming(
 					// is still held); the lane is never cooled down here.
 					if !exhausted {
 						tracing::info!(lane = slot.lane, %status, ?backoff, "lane in cooldown, retrying");
-						enter_cooldown(&slot, status.as_str(), backoff);
+						enter_cooldown(&acq.slot, status.as_str(), backoff);
 					}
-					state.router.record_attempt(
-						"nvidia",
-						&ctx.model,
+					state.router.finish_failure(
+						&&acq,
 						status.as_u16(),
-						sent_at.elapsed(),
 						exhausted,
+						None,
 					);
 					decision
 						.write()
 						.unwrap()
-						.push_attempt("nvidia", status.as_u16(), sent_at.elapsed());
+						.push_attempt(&acq.provider, status.as_u16(), sent_at.elapsed());
 					if !send(": retrying\n\n").await {
 						record_request(&ctx, "disconnect");
 						return;
@@ -1138,34 +1214,27 @@ fn streaming(
 					// SSE: surface it as an in-stream error event.
 					let status = resp.status();
 					let detail = resp.text().await.unwrap_or_default();
-					tracing::warn!(%status, "upstream rejected request");
+					tracing::warn!(provider = %acq.provider, %status, "upstream rejected request");
 					record_request(&ctx, status.as_str());
-					state.router.record_attempt(
-						"nvidia",
-						&ctx.model,
+					state.router.finish_failure(
+						&&acq,
 						status.as_u16(),
-						sent_at.elapsed(),
 						false,
+						None,
 					);
 					decision
 						.write()
 						.unwrap()
-						.push_attempt("nvidia", status.as_u16(), sent_at.elapsed());
+						.push_attempt(&acq.provider, status.as_u16(), sent_at.elapsed());
 					let _ = tx
 						.send(Ok(sse_error(&format!("upstream error {status}: {detail}"))))
 						.await;
 					return;
 				}
 
-				state.router.record_attempt(
-					"nvidia",
-					&ctx.model,
-					resp.status().as_u16(),
-					sent_at.elapsed(),
-					false,
-				);
+				state.router.finish_success(&&acq, resp.status().as_u16());
 				decision.write().unwrap().push_attempt(
-					"nvidia",
+					&acq.provider,
 					resp.status().as_u16(),
 					sent_at.elapsed(),
 				);
