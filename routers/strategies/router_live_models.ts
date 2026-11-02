@@ -11,8 +11,10 @@
  * priority (stable aliases, :free suffix conventions); live IDs fill the
  * gaps so the router can serve *every* model each key is entitled to.
  *
- * State persists to .state/live-models.json so a restart never depends on
- * the network; refresh runs at startup (non-blocking) and every 30 min.
+ * State persists to pens/estate/var/state/live-models.json (the sanctioned
+ * estate state dir — never /home/toxic/estate/.state, the ghost lease path)
+ * so a restart never depends on the network; refresh runs at startup
+ * (non-blocking) and every 30 min.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -25,7 +27,7 @@ import {
   log,
 } from "./router_config.ts";
 
-const STATE_PATH = "/home/toxic/estate/.state/live-models.json";
+const STATE_PATH = "/home/toxic/pens/estate/var/state/live-models.json";
 const REFRESH_MS = 30 * 60 * 1000;
 
 export const LIVE_STATUS: Record<
