@@ -91,3 +91,21 @@ strip = true
 # growth modest against opt-level="z".
 opt-level = 3
 codegen-units = 1
+
+# `cargo test --release` inherits the release profile and with it the
+# fat-LTO single-codegen-unit cost (2-5 minutes per compile — the lock the
+# agent loop kept hitting while tests churned). The estate convention
+# (OpenFang CONTRIBUTING.md, verified 2026-11-02) is a named fast profile
+# for iteration: `cargo build/test --profile release-fast` uses thin LTO +
+# 8 codegen units so the loop is ~30s; `--release` stays reserved for the
+# final deploy binary. serve.sh deploys `release-fast`.
+[profile.release-fast]
+inherits = "release"
+lto = "thin"
+codegen-units = 8
+opt-level = 2
+# mold is the estate's default linker on this box and cuts the LTO link
+# from tens of seconds to ~1s; fall back to lld, then the platform default.
+[profile.release-fast.package."*"]
+# (cargo does not support per-profile linker selection; set via config)
+
