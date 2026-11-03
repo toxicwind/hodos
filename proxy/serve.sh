@@ -24,7 +24,7 @@ python3 - "$_kr_env" << 'PY'
 import json, subprocess, sys
 path = sys.argv[1]
 env = json.loads(subprocess.check_output(
-    ["secretsmith", "--show", "--json", "env"], text=True))["exports"]
+    ["secretsmith", "--json", "env"], text=True))["exports"]
 with open(path, "w") as f:
     for k, v in sorted(env.items()):
         safe = v.replace("'", "'\\''")
@@ -42,7 +42,7 @@ if [[ -s "$_kr_env" ]]; then
   set +a
 fi
 rm -f "$_kr_env"
-export DATA_DIR="${DATA_DIR:-${RHODOCHROSITE_DATA_DIR:-$HOME/.hodos-data}}"
+export DATA_DIR="${DATA_DIR:-${RHODOCHROSITE_DATA_DIR:-$HOME/.rhodochrosite-data}}"
 export HOST="${HOST:-${RHODOCHROSITE_HOST:-127.0.0.1}}"
 export PORT="${PORT:-${RHODOCHROSITE_PORT:-25193}}"
 # Deploy the release binary (green/blue swap target). Building debug is for

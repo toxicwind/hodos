@@ -27,7 +27,7 @@ with rate-limiting, failover, circuit breakers, and per-key token buckets.
 ## Live facts
 
 - **Port**: 25193 (`ports.env` SSOT)
-- **State DB**: `~/.hodos-data/rhodochrosite_state.db` (circuits, lanes, provider health, sticky sessions)
+- **State DB**: `~/.rhodochrosite-data/rhodochrosite_state.db` (circuits, lanes, provider health, sticky sessions)
 - **Provider catalog**: generated — `proxy/src/roost_providers.rs` + `proxy/src/mimetite_providers.rs` (from `@toxicwind/mimetite`; never hand-edit)
 - **Upstreams**: NVIDIA NIM, Groq, Cerebras, Together, Mistral, OpenRouter, SiliconFlow, Google-EAP (opal), bornite (local VRAM :25100), free-inference
 - **Known historical bug (fixed in source)**: the Oct 28 binary answered some buffered requests with a bare `200 OK` text/plain body — rebuilt from source 2026-10-30 23:54; wire-verified relaying real upstream JSON after.
